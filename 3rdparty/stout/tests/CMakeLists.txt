@@ -45,8 +45,6 @@ set(STOUT_TESTS_SRC
   os/socket_tests.cpp
   os/strerror_tests.cpp
   os/systems_tests.cpp
-  protobuf_tests.pb.h
-  protobuf_tests.proto
   result_tests.cpp
   set_tests.cpp
   some_tests.cpp
@@ -62,8 +60,6 @@ if (NOT WIN32)
     mac_tests.cpp
     os_tests.cpp
     path_tests.cpp
-    protobuf_tests.cpp
-    protobuf_tests.pb.cc
     recordio_tests.cpp
     subcommand_tests.cpp
     svn_tests.cpp

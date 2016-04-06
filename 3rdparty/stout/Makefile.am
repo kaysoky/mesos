@@ -103,10 +103,6 @@ stout_tests_SOURCES =			\
   tests/os/strerror_tests.cpp		\
   tests/os/systems_tests.cpp		\
   tests/path_tests.cpp			\
-  tests/protobuf_tests.cpp		\
-  tests/protobuf_tests.pb.cc		\
-  tests/protobuf_tests.pb.h		\
-  tests/protobuf_tests.proto		\
   tests/recordio_tests.cpp		\
   tests/result_tests.cpp		\
   tests/set_tests.cpp			\
