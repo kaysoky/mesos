@@ -1977,26 +1977,74 @@ libtestqos_controller_la_LDFLAGS = $(MESOS_TEST_MODULE_LDFLAGS)
 
 if INSTALL_TESTS
 pkgmodule_LTLIBRARIES += $(MESOS_TEST_MODULES)
+pkgmodule_LTLIBRARIES += libmesos_tests.la
 else
 noinst_LTLIBRARIES += $(MESOS_TEST_MODULES)
+noinst_LTLIBRARIES += libmesos_tests.la
+endif
+
+# Library containing test helpers.
+libmesos_tests_la_SOURCES =					\
+  tests/cluster.cpp						\
+  tests/containerizer.cpp					\
+  tests/environment.cpp						\
+  tests/flags.cpp						\
+  tests/mesos.cpp						\
+  tests/module.cpp						\
+  tests/script.cpp						\
+  tests/utils.cpp						\
+  tests/containerizer/launcher.cpp				\
+  tests/containerizer/memory_test_helper.cpp
+
+libmesos_tests_la_CPPFLAGS = $(MESOS_CPPFLAGS)
+libmesos_tests_la_CPPFLAGS += -DSOURCE_DIR=\"$(abs_top_srcdir)\"
+libmesos_tests_la_CPPFLAGS += -DBUILD_DIR=\"$(abs_top_builddir)\"
+libmesos_tests_la_CPPFLAGS += -I../$(GTEST)/include
+libmesos_tests_la_CPPFLAGS += -I../$(GMOCK)/include
+libmesos_tests_la_CPPFLAGS += -DTESTLIBEXECDIR=\"$(testlibexecdir)\"
+libmesos_tests_la_CPPFLAGS += -DSBINDIR=\"$(sbindir)\"
+
+libmesos_tests_la_LIBADD =					\
+  ../3rdparty/libgmock.la					\
+  libmesos.la							\
+  $(LDADD)
+
+if !OS_FREEBSD
+  libmesos_tests_la_LIBADD += -ldl # FreeBSD includes dynamic lib utils in libc.
+endif
+
+libmesos_tests_la_DEPENDENCIES =				\
+  ../3rdparty/libgmock.la					\
+  libmesos.la							\
+  $(MESOS_TEST_MODULES)
+
+if HAS_JAVA
+libmesos_tests_la_CPPFLAGS += $(JAVA_CPPFLAGS)
+libmesos_tests_la_CPPFLAGS += -DZOOKEEPER_VERSION=\"$(ZOOKEEPER_VERSION)\"
+libmesos_tests_la_LDFLAGS = $(AM_LDFLAGS)
+libmesos_tests_la_DEPENDENCIES += $(EXAMPLES_JAR)
+endif
+
+if HAS_PYTHON
+libmesos_tests_la_DEPENDENCIES += $(MESOS_EGG)
 endif
 
 mesos_tests_SOURCES =						\
+  tests/main.cpp
+
+mesos_tests_SOURCES +=						\
   slave/qos_controllers/load.cpp				\
   tests/anonymous_tests.cpp					\
   tests/api_tests.cpp						\
   tests/attributes_tests.cpp					\
   tests/authentication_tests.cpp				\
   tests/authorization_tests.cpp					\
-  tests/cluster.cpp						\
   tests/command_executor_tests.cpp				\
   tests/container_logger_tests.cpp				\
-  tests/containerizer.cpp					\
   tests/cram_md5_authentication_tests.cpp			\
   tests/credentials_tests.cpp					\
   tests/disk_quota_tests.cpp					\
   tests/dynamic_weights_tests.cpp				\
-  tests/environment.cpp						\
   tests/examples_tests.cpp					\
   tests/exception_tests.cpp					\
   tests/executor_http_api_tests.cpp				\
@@ -2004,7 +2052,6 @@ mesos_tests_SOURCES =						\
   tests/fetcher_cache_tests.cpp					\
   tests/fetcher_tests.cpp					\
   tests/files_tests.cpp						\
-  tests/flags.cpp						\
   tests/gc_tests.cpp						\
   tests/hdfs_tests.cpp						\
   tests/health_check_tests.cpp					\
@@ -2014,7 +2061,6 @@ mesos_tests_SOURCES =						\
   tests/http_fault_tolerance_tests.cpp				\
   tests/log_tests.cpp						\
   tests/logging_tests.cpp					\
-  tests/main.cpp						\
   tests/master_allocator_tests.cpp				\
   tests/master_authorization_tests.cpp				\
   tests/master_contender_detector_tests.cpp			\
@@ -2023,9 +2069,7 @@ mesos_tests_SOURCES =						\
   tests/master_slave_reconciliation_tests.cpp			\
   tests/master_tests.cpp					\
   tests/master_validation_tests.cpp				\
-  tests/mesos.cpp						\
   tests/metrics_tests.cpp					\
-  tests/module.cpp						\
   tests/module_tests.cpp					\
   tests/oversubscription_tests.cpp				\
   tests/partition_tests.cpp					\
@@ -2045,7 +2089,6 @@ mesos_tests_SOURCES =						\
   tests/scheduler_event_call_tests.cpp				\
   tests/scheduler_http_api_tests.cpp				\
   tests/scheduler_tests.cpp					\
-  tests/script.cpp						\
   tests/slave_authorization_tests.cpp				\
   tests/slave_recovery_tests.cpp				\
   tests/slave_tests.cpp						\
@@ -2055,7 +2098,6 @@ mesos_tests_SOURCES =						\
   tests/teardown_tests.cpp					\
   tests/uri_tests.cpp						\
   tests/uri_fetcher_tests.cpp					\
-  tests/utils.cpp						\
   tests/values_tests.cpp					\
   tests/zookeeper_url_tests.cpp					\
   tests/common/command_utils_tests.cpp				\
@@ -2067,8 +2109,6 @@ mesos_tests_SOURCES =						\
   tests/containerizer/docker_tests.cpp				\
   tests/containerizer/external_containerizer_test.cpp		\
   tests/containerizer/isolator_tests.cpp			\
-  tests/containerizer/launcher.cpp				\
-  tests/containerizer/memory_test_helper.cpp			\
   tests/containerizer/mesos_containerizer_tests.cpp		\
   tests/containerizer/provisioner_appc_tests.cpp		\
   tests/containerizer/provisioner_backend_tests.cpp		\
@@ -2092,7 +2132,11 @@ mesos_tests_CPPFLAGS += -isystem ../$(GMOCK)/include
 mesos_tests_CPPFLAGS += -DTESTLIBEXECDIR=\"$(testlibexecdir)\"
 mesos_tests_CPPFLAGS += -DSBINDIR=\"$(sbindir)\"
 
-mesos_tests_LDADD = ../3rdparty/libgmock.la libmesos.la $(LDADD)
+mesos_tests_LDADD =						\
+  ../3rdparty/libgmock.la					\
+  libmesos.la							\
+  libmesos_tests.la						\
+  $(LDADD)
 
 if !OS_FREEBSD
   mesos_tests_LDADD += -ldl # FreeBSD includes dynamic lib utils in libc.
@@ -2101,6 +2145,7 @@ endif
 mesos_tests_DEPENDENCIES =					\
   ../3rdparty/libgmock.la					\
   libmesos.la							\
+  libmesos_tests.la						\
   $(MESOS_TEST_MODULES)
 
 if OS_LINUX
