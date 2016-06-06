@@ -56,6 +56,7 @@ PIP = pip-$(PIP_VERSION)
 PROTOBUF = protobuf-$(PROTOBUF_VERSION)
 PICOJSON = picojson-$(PICOJSON_VERSION)
 SETUPTOOLS = setuptools-$(SETUPTOOLS_VERSION)
+URIPARSER = uriparser-$(URIPARSER_VERSION)
 WHEEL = wheel-$(WHEEL_VERSION)
 ZOOKEEPER = zookeeper-$(ZOOKEEPER_VERSION)
 
@@ -71,6 +72,7 @@ EXTRA_DIST =		\
   $(PROTOBUF).tar.gz	\
   $(PICOJSON).tar.gz	\
   $(SETUPTOOLS).tar.gz	\
+  $(URIPARSER).tar.gz	\
   $(WHEEL).tar.gz	\
   $(ZOOKEEPER).tar.gz
 
@@ -113,6 +115,7 @@ CLEAN_EXTRACTED =	\
   $(PICOJSON)		\
   $(PROTOBUF)		\
   $(SETUPTOOLS)		\
+  $(URIPARSER)		\
   $(WHEEL)		\
   $(ZOOKEEPER)
 
@@ -187,6 +190,22 @@ BUILT_SOURCES += $(nodist_libry_http_parser_la_SOURCES)
 
 $(HTTP_PARSER)/http_parser.c: $(HTTP_PARSER)-stamp
 endif
+
+
+if WITH_BUNDLED_URIPARSER
+$(URIPARSER)/liburiparser.la: $(URIPARSER)-build-stamp
+
+# NOTE: `--disable-test` will remove uriparser's dependency on libcpptest.
+# `--disable-doc` will remove dependencies on various graphing libraries.
+$(URIPARSER)-build-stamp: $(URIPARSER)-stamp
+	cd $(URIPARSER) && \
+	  ./configure $(CONFIGURE_ARGS) --disable-test --disable-doc && \
+	  $(MAKE) $(AM_MAKEFLAGS)
+	touch $@
+
+ALL_LOCAL += $(URIPARSER)/liburiparser.la
+endif
+
 
 if WITH_BUNDLED_LIBEV
 $(LIBEV)/libev.la: $(LIBEV)-stamp

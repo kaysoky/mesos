@@ -875,6 +875,44 @@ AM_CONDITIONAL([WITH_BUNDLED_HTTP_PARSER],
                [test "x$with_bundled_http_parser" = "xyes"])
 
 
+# Check if user has asked us to use a preinstalled uriparser, or if
+# they asked us to ignore all bundled libraries while compiling and
+# linking.
+if test "x$without_bundled_uriparser" = "xyes" || \
+   test "x$enable_bundled" != "xyes"; then
+  # Use the system default prefix if not specified.
+  if test -n "`echo $with_uriparser`"; then
+    URIPARSERPREFIX="${with_uriparser}"
+  elif test "x$enable_bundled" != "xyes"; then
+    URIPARSERPREFIX="/usr"
+  fi
+
+  AC_CHECK_HEADERS([uriparser/Uri.h],
+                   [found_uriparser=yes],
+                   [found_uriparser=no])
+
+  if test "x$found_uriparser" = "xyes"; then
+    with_bundled_uriparser=no
+  else
+    AC_MSG_ERROR([cannot find uriparser
+-------------------------------------------------------------------
+You have requested the use of a non-bundled uriparser but no suitable
+uriparser could be found.
+
+You may want specify the location of uriparser by providing a prefix
+path via --with-uriparser=DIR, or check that the path you provided is
+correct if you're already doing this.
+-------------------------------------------------------------------
+])
+  fi
+else
+  with_bundled_uriparser=yes
+fi
+
+AM_CONDITIONAL([WITH_BUNDLED_URIPARSER],
+               [test "x$with_bundled_uriparser" = "xyes"])
+
+
 # TODO(benh): Consider using AS_IF instead of just shell 'if'
 # statements for better autoconf style (the AS_IF macros also make
 # sure variable dependencies are handled appropriately).
