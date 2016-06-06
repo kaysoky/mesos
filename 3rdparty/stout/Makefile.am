@@ -27,6 +27,7 @@ GMOCK = ../gmock-$(GMOCK_VERSION)
 GTEST = $(GMOCK)/gtest
 PROTOBUF = ../protobuf-$(PROTOBUF_VERSION)
 PICOJSON = ../picojson-$(PICOJSON_VERSION)
+URIPARSER = ../uriparser-$(URIPARSER_VERSION)
 
 # We use "-isystem" instead of "-I" to add Boost to the include search
 # path. This disables compiler warnings inside Boost headers since we
@@ -63,6 +64,13 @@ PROTOBUF_INCLUDE_FLAGS = -I$(PROTOBUF)/src
 LIB_PROTOBUF = $(PROTOBUF)/src/libprotobuf.la
 else
 LIB_PROTOBUF = -lprotobuf
+endif
+
+if WITH_BUNDLED_URIPARSER
+URIPARSER_INCLUDE_FLAGS = -I$(URIPARSER)/include
+LIB_URIPARSER = $(URIPARSER)/liburiparser.la
+else
+LIB_URIPARSER = -luriparser
 endif
 
 # Tests for stout.
@@ -115,6 +123,7 @@ stout_tests_SOURCES =			\
   tests/subcommand_tests.cpp		\
   tests/svn_tests.cpp			\
   tests/try_tests.cpp			\
+  tests/uri_tests.cpp			\
   tests/uuid_tests.cpp			\
   tests/version_tests.cpp
 
@@ -133,6 +142,7 @@ stout_tests_CPPFLAGS =			\
   $(GTEST_INCLUDE_FLAGS)		\
   $(PICOJSON_INCLUDE_FLAGS)		\
   $(PROTOBUF_INCLUDE_FLAGS)		\
+  $(URIPARSER_INCLUDE_FLAGS)		\
   $(AM_CPPFLAGS)
 
 # The order of LDADD flags would matter if the same symbol is provided by
@@ -142,6 +152,7 @@ stout_tests_LDADD =			\
   $(LIB_GMOCK)				\
   $(LIB_GLOG)				\
   $(LIB_PROTOBUF)			\
+  $(LIB_URIPARSER)			\
   -lsvn_subr-1				\
   -lsvn_delta-1				\
   -lapr-1

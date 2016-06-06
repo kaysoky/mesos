@@ -178,6 +178,7 @@ nobase_include_HEADERS =			\
   stout/tests/utils.hpp				\
   stout/unimplemented.hpp			\
   stout/unreachable.hpp				\
+  stout/uri.hpp					\
   stout/utils.hpp				\
   stout/uuid.hpp				\
   stout/version.hpp				\
