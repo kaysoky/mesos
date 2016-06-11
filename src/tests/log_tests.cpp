@@ -81,6 +81,8 @@ namespace internal {
 namespace tests {
 
 
+// Verifies that the network abstraction's `watch` promise is satisfied
+// when the network size satisfies the appropriate constraints.
 TEST(NetworkTest, Watch)
 {
   UPID pid1 = ProcessBase().self();
@@ -139,6 +141,8 @@ typedef ::testing::Types<LevelDBStorage> LogStorageTypes;
 TYPED_TEST_CASE(LogStorageTest, LogStorageTypes);
 
 
+// Verifies that the replicated log storage backend deletes the
+// appropriate entries when given the `Truncate` action.
 TYPED_TEST(LogStorageTest, Truncate)
 {
   TypeParam storage;
@@ -253,6 +257,8 @@ TYPED_TEST(LogStorageTest, Truncate)
 }
 
 
+// Verifies that the replicated log storage backend deletes "holes"
+// in the log appropriately when given the `Truncate` action.
 TYPED_TEST(LogStorageTest, TruncateWithEmptyLog)
 {
   TypeParam storage;
@@ -284,6 +290,8 @@ TYPED_TEST(LogStorageTest, TruncateWithEmptyLog)
 }
 
 
+// Verifies that the replicated log storage backend is reasonably fast
+// given a very sparse log and a large `Truncate` action.
 TYPED_TEST(LogStorageTest, TruncateWithManyHoles)
 {
   TypeParam storage;
@@ -329,6 +337,10 @@ protected:
 };
 
 
+// Verifies that a `Replica` in the `VOTING` state will `ACCEPT` a
+// `PromiseRequest` proposal iff the `Replica` has not made a promise
+// for a greater or equal proposal in the past.  The replica should
+// `REJECT` a `PromiseRequest` proposal otherwise.
 TEST_F(ReplicaTest, Promise)
 {
   const string path = os::getcwd() + "/.log";
@@ -384,6 +396,8 @@ TEST_F(ReplicaTest, Promise)
 }
 
 
+// Verifies that a `Replica` will accept a `WriteRequest` after accepting
+// a `PromiseRequest` for the same proposal.
 TEST_F(ReplicaTest, Append)
 {
   const string path = os::getcwd() + "/.log";
@@ -447,6 +461,8 @@ TEST_F(ReplicaTest, Append)
 }
 
 
+// Verifies that a new `Replica` object will restore state from a previous
+// `Replica`. This test copies code from `ReplicaTest.Append`.
 TEST_F(ReplicaTest, Restore)
 {
   const string path = os::getcwd() + "/.log";
@@ -589,6 +605,9 @@ protected:
 };
 
 
+// Verifies that a coordinator can get elected.
+// The sequence of events includes obtaining an implicit promise, an
+// explicit promise, and writing to the replicated log after being elected.
 TEST_F(CoordinatorTest, Elect)
 {
   const string path1 = os::getcwd() + "/.log1";
@@ -671,6 +690,8 @@ TEST_F(CoordinatorTest, ElectWithClockPaused)
 }
 
 
+// Verifies that a coordinator can write an action (`APPEND`) to the
+// replicated log after being elected.
 TEST_F(CoordinatorTest, AppendRead)
 {
   const string path1 = os::getcwd() + "/.log1";
@@ -720,6 +741,7 @@ TEST_F(CoordinatorTest, AppendRead)
 }
 
 
+// Verifies that reading past the end of the replicated log will fail.
 TEST_F(CoordinatorTest, AppendReadError)
 {
   const string path1 = os::getcwd() + "/.log1";
@@ -766,6 +788,10 @@ TEST_F(CoordinatorTest, AppendReadError)
 }
 
 
+// Verifies that writes to the replicated log will not succeed if a
+// quorum is not present after a successful election.  Subsequent writes
+// should fail immediately as the coordinator should lose leadership
+// when a write fails.
 TEST_F(CoordinatorTest, AppendDiscarded)
 {
   const string path1 = os::getcwd() + "/.log1";
@@ -794,6 +820,7 @@ TEST_F(CoordinatorTest, AppendDiscarded)
     EXPECT_EQ(0u, electing.get().get());
   }
 
+  // Bring the group below quorum.
   process::terminate(replica2->pid());
   process::wait(replica2->pid());
   replica2.reset();
@@ -810,11 +837,14 @@ TEST_F(CoordinatorTest, AppendDiscarded)
     Future<Option<uint64_t>> appending = coord.append("hello moto");
     AWAIT_READY(appending);
 
+    // The coordinator should have been demoted when the first append failed.
     EXPECT_NONE(appending.get());
   }
 }
 
 
+// Verifies that the coordinator will not complete an election if a
+// quorum is not present.
 TEST_F(CoordinatorTest, ElectNoQuorum)
 {
   const string path = os::getcwd() + "/.log";
@@ -839,10 +869,16 @@ TEST_F(CoordinatorTest, ElectNoQuorum)
 
   EXPECT_TRUE(electing.isPending());
 
+  // TODO(josephw): After adding retry logic (see MESOS-5576), make sure
+  // this future stays pending after another `Clock::advance(...)`.
+
   Clock::resume();
 }
 
 
+
+// Verifies that writes to the replicated log will not succeed if a
+// quorum is not present after a successful election.
 TEST_F(CoordinatorTest, AppendNoQuorum)
 {
   const string path1 = os::getcwd() + "/.log1";
@@ -870,6 +906,7 @@ TEST_F(CoordinatorTest, AppendNoQuorum)
     EXPECT_SOME_EQ(0u, electing.get());
   }
 
+  // Bring the group below quorum.
   process::terminate(replica2->pid());
   process::wait(replica2->pid());
   replica2.reset();
@@ -883,10 +920,14 @@ TEST_F(CoordinatorTest, AppendNoQuorum)
 
   EXPECT_TRUE(appending.isPending());
 
+  // TODO(josephw): After adding retry logic (see MESOS-5576), make sure
+  // this future stays pending after another `Clock::advance(...)`.
+
   Clock::resume();
 }
 
 
+// Verifies that a second coordinator can take over leadership.
 TEST_F(CoordinatorTest, Failover)
 {
   const string path1 = os::getcwd() + "/.log1";
@@ -946,6 +987,9 @@ TEST_F(CoordinatorTest, Failover)
 }
 
 
+// Verifies that a coordinator will lose leadership (demotion) when a
+// second coordinator is elected over it. Writes by the first
+// coordinator should fail after it is demoted.
 TEST_F(CoordinatorTest, Demoted)
 {
   const string path1 = os::getcwd() + "/.log1";
@@ -1021,6 +1065,9 @@ TEST_F(CoordinatorTest, Demoted)
 }
 
 
+// Verifies that a new coordinator will fill in its replicated log
+// upon election, even if the underlying replica was absent when the
+// log entries were originally added.
 TEST_F(CoordinatorTest, Fill)
 {
   const string path1 = os::getcwd() + "/.log1";
@@ -1097,6 +1144,14 @@ TEST_F(CoordinatorTest, Fill)
 }
 
 
+// Verifies that a new coordinator will fill in its replicated log
+// upon election, even if:
+//   1) The underlying replica was absent when the log entries were
+//      originally added.
+//   2) One of the original replicas does not "learn" about any of the
+//      log entries.  Unlearned entries will trigger a full Paxos round
+//      (read and write) when a replica attempts to replicate the entry.
+//   3) The unlearned replica above is used to fill in the replicated log.
 TEST_F(CoordinatorTest, NotLearnedFill)
 {
   const string path1 = os::getcwd() + "/.log1";
@@ -1114,8 +1169,7 @@ TEST_F(CoordinatorTest, NotLearnedFill)
   Shared<Replica> replica1(new Replica(path1));
   Shared<Replica> replica2(new Replica(path2));
 
-  // Drop messages here in order to obtain the pid of replica2. We
-  // only want to drop learned message sent to replica2.
+  // Prevent `replica2` from "learning" about any of the log entries.
   DROP_PROTOBUFS(LearnedMessage(), _, Eq(replica2->pid()));
 
   set<UPID> pids;
@@ -1144,6 +1198,7 @@ TEST_F(CoordinatorTest, NotLearnedFill)
 
   Shared<Replica> replica3(new Replica(path3));
 
+  // This group of replicas have not "learned" about any of the log entries.
   pids.clear();
   pids.insert(replica2->pid());
   pids.insert(replica3->pid());
@@ -1177,6 +1232,8 @@ TEST_F(CoordinatorTest, NotLearnedFill)
 }
 
 
+// Verifies that a coordinator can write multiple actions (`APPEND`)
+// to the replicated log after being elected.
 TEST_F(CoordinatorTest, MultipleAppends)
 {
   const string path1 = os::getcwd() + "/.log1";
@@ -1223,6 +1280,14 @@ TEST_F(CoordinatorTest, MultipleAppends)
 }
 
 
+// Verifies that a new coordinator will correctly replicate multiple
+// writes to its replicated log upon election, even if:
+//   1) The underlying replica was absent when the log entries were
+//      originally added.
+//   2) One of the original replicas does not "learn" about any of the
+//      log entries.  Unlearned entries will trigger a full Paxos round
+//      (read and write) when a replica attempts to replicate the entry.
+//   3) The unlearned replica above is used to fill in the replicated log.
 TEST_F(CoordinatorTest, MultipleAppendsNotLearnedFill)
 {
   const string path1 = os::getcwd() + "/.log1";
@@ -1240,8 +1305,7 @@ TEST_F(CoordinatorTest, MultipleAppendsNotLearnedFill)
   Shared<Replica> replica1(new Replica(path1));
   Shared<Replica> replica2(new Replica(path2));
 
-  // Drop messages here in order to obtain the pid of replica2. We
-  // only want to drop learned message sent to replica2.
+  // Prevent `replica2` from "learning" about any of the log entries.
   DROP_PROTOBUFS(LearnedMessage(), _, Eq(replica2->pid()));
 
   set<UPID> pids;
@@ -1266,6 +1330,7 @@ TEST_F(CoordinatorTest, MultipleAppendsNotLearnedFill)
 
   Shared<Replica> replica3(new Replica(path3));
 
+  // This group of replicas have not "learned" about any of the log entries.
   pids.clear();
   pids.insert(replica2->pid());
   pids.insert(replica3->pid());
@@ -1300,6 +1365,8 @@ TEST_F(CoordinatorTest, MultipleAppendsNotLearnedFill)
 }
 
 
+// Verifies that a coordinator can write multiple actions (`APPEND`)
+// and truncate the replicated log after being elected.
 TEST_F(CoordinatorTest, Truncate)
 {
   const string path1 = os::getcwd() + "/.log1";
@@ -1358,6 +1425,14 @@ TEST_F(CoordinatorTest, Truncate)
 }
 
 
+// Verifies that a new coordinator will correctly replicate multiple
+// writes and a truncation to its replicated log upon election, even if:
+//   1) The underlying replica was absent when the log entries were
+//      originally added.
+//   2) One of the original replicas does not "learn" about any of the
+//      log entries.  Unlearned entries will trigger a full Paxos round
+//      (read and write) when a replica attempts to replicate the entry.
+//   3) The unlearned replica above is used to fill in the replicated log.
 TEST_F(CoordinatorTest, TruncateNotLearnedFill)
 {
   const string path1 = os::getcwd() + "/.log1";
@@ -1407,6 +1482,7 @@ TEST_F(CoordinatorTest, TruncateNotLearnedFill)
 
   Shared<Replica> replica3(new Replica(path3));
 
+  // This group of replicas have not "learned" about any of the log entries.
   pids.clear();
   pids.insert(replica2->pid());
   pids.insert(replica3->pid());
@@ -1447,6 +1523,12 @@ TEST_F(CoordinatorTest, TruncateNotLearnedFill)
 }
 
 
+// Verifies that a new coordinator will correctly replicate multiple
+// writes and a truncation to its replicated log upon election, even if:
+//   1) The underlying replica was absent when the log entries were
+//      originally added.
+//   2) The leading replica leaves the Paxos group before the new
+//      coordinator joins and becomes leader.
 TEST_F(CoordinatorTest, TruncateLearnedFill)
 {
   const string path1 = os::getcwd() + "/.log1";
@@ -1676,7 +1758,8 @@ protected:
 };
 
 
-// Two logs both need recovery compete with each other.
+// Verifies that the replicated log stays consistent when multiple new
+// replicas recover from an existing quorum simultaneously.
 TEST_F(RecoverTest, RacingCatchup)
 {
   const string path1 = os::getcwd() + "/.log1";
@@ -1781,6 +1864,8 @@ TEST_F(RecoverTest, RacingCatchup)
 }
 
 
+// Verifies that a new replica will retry if some requests are dropped
+// during replicated-log catchup.
 TEST_F(RecoverTest, CatchupRetry)
 {
   const string path1 = os::getcwd() + "/.log1";
@@ -1873,6 +1958,8 @@ TEST_F(RecoverTest, CatchupRetry)
 }
 
 
+// Verifies that `EMPTY` replicas will transition into the `VOTING` state
+// if the entire group (quorum * 2 - 1) is `EMPTY`.
 TEST_F(RecoverTest, AutoInitialization)
 {
   const string path1 = os::getcwd() + "/.log1";
@@ -1948,6 +2035,9 @@ TEST_F(RecoverTest, AutoInitialization)
 }
 
 
+// Verifies that an entire group (quorum * 2 - 1) of `EMPTY` replicas
+// will transition into the `VOTING` state after retrying recovery
+// due to some dropped messages.
 TEST_F(RecoverTest, AutoInitializationRetry)
 {
   const string path1 = os::getcwd() + "/.log1";
