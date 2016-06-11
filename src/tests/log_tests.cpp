@@ -624,6 +624,15 @@ TEST_F(CoordinatorTest, Elect)
     ASSERT_TRUE(actions.get().front().has_type());
     ASSERT_EQ(Action::NOP, actions.get().front().type());
   }
+
+  {
+    Future<list<Action>> actions = replica2->read(0, 0);
+    AWAIT_READY(actions);
+    ASSERT_EQ(1u, actions.get().size());
+    EXPECT_EQ(0u, actions.get().front().position());
+    ASSERT_TRUE(actions.get().front().has_type());
+    ASSERT_EQ(Action::NOP, actions.get().front().type());
+  }
 }
 
 
