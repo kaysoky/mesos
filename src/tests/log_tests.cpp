@@ -1859,6 +1859,17 @@ TEST_F(RecoverTest, CatchupRetry)
   Clock::resume();
 
   AWAIT_READY(catching);
+
+  {
+    Future<list<Action>> actions = replica3->read(1, 10);
+    AWAIT_READY(actions);
+    EXPECT_EQ(10u, actions.get().size());
+    foreach (const Action& action, actions.get()) {
+      ASSERT_TRUE(action.has_type());
+      ASSERT_EQ(Action::APPEND, action.type());
+      EXPECT_EQ(stringify(action.position()), action.append().bytes());
+    }
+  }
 }
 
 
