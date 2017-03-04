@@ -3024,31 +3024,31 @@ UPID ProcessManager::spawn(ProcessBase* process, bool manage)
 {
   CHECK(process != nullptr);
 
-  // If the `ProcessManager` is cleaning itself up, no further processes
-  // may be spawned.
-  if (finalizing.load()) {
-    LOG(WARNING)
-      << "Attempted to spawn a process (" << process->self()
-      << ") after finalizing libprocess!";
+  synchronized (processes_mutex) {
+    // If the `ProcessManager` is cleaning itself up, no further processes
+    // may be spawned.
+    if (finalizing.load()) {
+      LOG(WARNING)
+        << "Attempted to spawn a process (" << process->self()
+        << ") after finalizing libprocess!";
 
-    if (manage) {
-      delete process;
+      if (manage) {
+        delete process;
+      }
+
+      return UPID();
     }
 
-    return UPID();
-  }
-
-  synchronized (processes_mutex) {
     if (processes.count(process->pid.id) > 0) {
       return UPID();
     } else {
       processes[process->pid.id] = process;
     }
-  }
 
-  // Use the garbage collector if requested.
-  if (manage) {
-    dispatch(gc->self(), &GarbageCollector::manage<ProcessBase>, process);
+    // Use the garbage collector if requested.
+    if (manage) {
+      dispatch(gc->self(), &GarbageCollector::manage<ProcessBase>, process);
+    }
   }
 
   // We save the PID before enqueueing the process to avoid the race
