@@ -59,7 +59,55 @@ public:
     synchronized (data->lock) {
       if (data->elements.empty()) {
         data->promises.push_back(Owned<Promise<T>>(new Promise<T>()));
-        future = data->promises.back()->future();
+
+        // NOTE: We need to keep a reference to the Promise in order
+        // for the `onDiscard` handler to discard this Promise.
+        Promise<T>* promise_ptr = data->promises.back().get();
+
+        // NOTE: We use a `std::weak_ptr` here in case the returned Future
+        // outlives the Promise instantiated here or the entire Queue.
+        std::weak_ptr<Data> weak_data(data);
+
+        // Install a discard handler on the returned Future.
+        // Upon discarding the Future, we similarly discard the Promise
+        // to clean up any callbacks. The Promise itself is them removed
+        // from the interal queue.
+        future = data->promises.back()->future()
+          .onDiscard([promise_ptr, weak_data]() {
+            std::shared_ptr<Data> data(weak_data.lock());
+
+            // Check if the Queue has already been destroyed.
+            if (data == nullptr) {
+              return;
+            }
+
+            // NOTE: We need to grab the corresponding promise but discard
+            // it outside of the critical section because discarding it might
+            // trigger callbacks that try to reacquire the lock.
+            Owned<Promise<T>> promise;
+
+            synchronized (data->lock) {
+              // Remove the Promise from the internal queue by copying
+              // all the elements (in order) to another queue, minus the
+              // discarded Promise.
+              std::deque<Owned<Promise<T>>> pruned;
+              while (!data->promises.empty()) {
+                if (data->promises.front().get() == promise_ptr) {
+                  promise = data->promises.front();
+                } else {
+                  pruned.push_back(data->promises.front());
+                }
+
+                data->promises.pop_front();
+              }
+
+              data->promises.swap(pruned);
+            }
+
+            if (promise.get() != nullptr) {
+              promise->discard();
+            }
+          });
       } else {
         future = Future<T>(data->elements.front());
         data->elements.pop();

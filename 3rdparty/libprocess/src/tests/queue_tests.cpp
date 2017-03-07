@@ -39,6 +39,49 @@ TEST(QueueTest, Block)
 }
 
 
+TEST(QueueTest, BlockAndDiscard)
+{
+  Queue<string> q;
+
+  // A 'get' with an empty queue should block.
+  Future<string> get1 = q.get();
+  Future<string> get2 = q.get();
+
+  EXPECT_TRUE(get1.isPending());
+  EXPECT_TRUE(get2.isPending());
+
+  // Discarding the future should effectively pop our request off
+  // the queue. Data on the queue should then satisfy the next waiter.
+  get1.discard();
+
+  // After putting something the 'get' should be completed.
+  q.put("hello world");
+
+  EXPECT_TRUE(get2.isReady());
+  EXPECT_EQ("hello world", get2.get());
+}
+
+
+TEST(QueueTest, BlockAndDeallocate)
+{
+  // This future will outlive the queue.
+  Future<string> get;
+
+  {
+    Queue<string> q;
+
+    // A 'get' with an empty queue should block.
+    get = q.get();
+
+    EXPECT_TRUE(get.isPending());
+  }
+
+  // Should be a no-op as the queue that would satisify this future
+  // has already been destroyed.
+  get.discard();
+}
+
+
 TEST(QueueTest, Noblock)
 {
   Queue<string> q;
