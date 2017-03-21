@@ -939,6 +939,13 @@ void on_accept(const Future<Socket>& socket)
           decoder));
   }
 
+  // If the Future has been discarded, we terminate the accept loop
+  // on the socket. Otherwise, `process::finalize` will deadlock
+  // on the `socket_mutex` mutex below.
+  if (socket.isDiscarded()) {
+    return;
+  }
+
   // NOTE: `__s__` may be cleaned up during `process::finalize`.
   synchronized (socket_mutex) {
     if (__s__ != nullptr) {
