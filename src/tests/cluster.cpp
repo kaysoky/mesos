@@ -357,6 +357,15 @@ Master::~Master()
   process::http::authentication::unsetAuthenticator(
       master::READWRITE_HTTP_AUTHENTICATION_REALM);
 
+  // If we are using the `StandaloneMasterDetector`, un-appoint the master.
+  // This prevents certain scheduler implementations from
+  if (zookeeperUrl.isNone()) {
+    StandaloneMasterDetector* _detector = CHECK_NOTNULL(
+        dynamic_cast<StandaloneMasterDetector*>(detector.get()));
+
+    _detector->appoint(None());
+  }
+
   process::terminate(pid);
   process::wait(pid);
 }
