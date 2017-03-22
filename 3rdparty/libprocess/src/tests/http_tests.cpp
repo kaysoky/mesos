@@ -231,6 +231,20 @@ INSTANTIATE_TEST_CASE_P(
 // TODO(vinod): Use AWAIT_EXPECT_RESPONSE_STATUS_EQ in the tests.
 
 
+TEST_P(HTTPTest, RapidReconnect)
+{
+  Http http;
+  for (int i = 0; i < 200; i++) {
+    http::get(http.process->self(), "pipe", None(), None(), GetParam());
+  }
+
+  process::reinitialize(
+      None(),
+      READWRITE_HTTP_AUTHENTICATION_REALM,
+      READONLY_HTTP_AUTHENTICATION_REALM);
+}
+
+
 TEST_P(HTTPTest, Endpoints)
 {
   Http http;
