@@ -1083,9 +1083,6 @@ bool initialize(
   // Initialize the event loop.
   EventLoop::initialize();
 
-  // Setup processing threads.
-  long num_worker_threads = process_manager->init_threads();
-
   Clock::initialize(lambda::bind(&timedout, lambda::_1));
 
   // Fill in the local IP and port for inter-libprocess communication.
@@ -1217,6 +1214,18 @@ bool initialize(
   // Create global garbage collector process.
   gc = new GarbageCollector();
   spawn(gc);
+
+  // Setup processing threads.
+  // NOTE: Worker threads must be started after the garbage collector
+  // because items on the event loop (a worker thread) can outlive
+  // libprocess itself. During tests that exercise libprocess
+  // reinitialization (and only in that case), events may queue up
+  // in the event loop, but only get executed after a new event loop
+  // thread has been created. These queued up events end up bypassing
+  // the `process::initialize` synchronization variables
+  // (i.e. `initialize_complete`) because the events are queued during
+  // the previous incarnation of libprocess.
+  long num_worker_threads = process_manager->init_threads();
 
   // Create global help process.
   help = spawn(new Help(delegate), true);
