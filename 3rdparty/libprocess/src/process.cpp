@@ -457,7 +457,7 @@ private:
   hashmap<int_fd, queue<Encoder*>> outgoing;
 
   // HTTP proxies.
-  hashmap<int_fd, HttpProxy*> proxies;
+  hashmap<int_fd, PID<HttpProxy>> proxies;
 
   // Protects instance variables.
   std::recursive_mutex mutex;
@@ -1971,10 +1971,10 @@ PID<HttpProxy> SocketManager::proxy(const Socket& socket)
     // request. Thus, if there is no more socket, return an empty PID.
     if (sockets.count(socket) > 0) {
       if (proxies.count(socket) > 0) {
-        return proxies[socket]->self();
+        return proxies[socket];
       } else {
         proxy = new HttpProxy(sockets.at(socket));
-        proxies[socket] = proxy;
+        proxies[socket] = PID<HttpProxy>(proxy);
       }
     }
   }
@@ -2296,7 +2296,7 @@ void SocketManager::send(Message* message, const SocketImpl::Kind& kind)
 
 Encoder* SocketManager::next(int_fd s)
 {
-  HttpProxy* proxy = nullptr; // Non-null if needs to be terminated.
+  PID<HttpProxy> proxy;
 
   synchronized (mutex) {
     // We cannot assume 'sockets.count(s) > 0' here because it's
@@ -2368,9 +2368,7 @@ Encoder* SocketManager::next(int_fd s)
   // We terminate the proxy outside the synchronized block to avoid
   // possible deadlock between the ProcessManager and SocketManager
   // (see comment in SocketManager::proxy for more information).
-  if (proxy != nullptr) {
-    terminate(proxy);
-  }
+  terminate(proxy);
 
   return nullptr;
 }
@@ -2378,7 +2376,7 @@ Encoder* SocketManager::next(int_fd s)
 
 void SocketManager::close(int_fd s)
 {
-  Option<UPID> proxy; // Some if an `HttpProxy` needs to be terminated.
+  PID<HttpProxy> proxy;
 
   synchronized (mutex) {
     // This socket might not be active if it was already asked to get
@@ -2415,7 +2413,7 @@ void SocketManager::close(int_fd s)
 
       // Clean up any proxy associated with this socket.
       if (proxies.count(s) > 0) {
-        proxy = proxies.at(s)->self();
+        proxy = proxies.at(s);
         proxies.erase(s);
       }
 
@@ -2448,9 +2446,7 @@ void SocketManager::close(int_fd s)
 
   // We terminate the proxy outside the synchronized block to avoid
   // possible deadlock between the ProcessManager and SocketManager.
-  if (proxy.isSome()) {
-    terminate(proxy.get());
-  }
+  terminate(proxy);
 
   // Note that we don't actually:
   //
