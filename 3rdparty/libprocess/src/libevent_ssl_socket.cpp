@@ -32,6 +32,7 @@
 #include <stout/os/dup.hpp>
 #include <stout/os/fcntl.hpp>
 
+#include "gate.hpp"
 #include "libevent.hpp"
 #include "libevent_ssl_socket.hpp"
 #include "openssl.hpp"
@@ -115,8 +116,15 @@ LibeventSSLSocketImpl::~LibeventSSLSocketImpl()
   bufferevent* _bev = bev;
   std::weak_ptr<LibeventSSLSocketImpl>* _event_loop_handle = event_loop_handle;
 
+  // This is used to synchronize the thread that calls this destructor
+  // with the event loop thread, which actually performs the destruction.
+  // In case the destructor is run inside the event loop,
+  // `ALLOW_SHORT_CIRCUIT` will cause the function to execute immediately.
+  std::shared_ptr<Gate> destructor_gate = std::make_shared<Gate>();
+  Gate::state_t old = destructor_gate->approach();
+
   run_in_event_loop(
-      [_listener, _bev, _event_loop_handle, fd]() {
+      [fd, _listener, _bev, _event_loop_handle, destructor_gate]() {
         // Once this lambda is called, it should not be possible for
         // more event loop callbacks to be triggered with 'this->bev'.
         // This is important because we delete event_loop_handle which
@@ -143,8 +151,12 @@ LibeventSSLSocketImpl::~LibeventSSLSocketImpl()
         CHECK_SOME(os::close(fd)) << "Failed to close socket";
 
         delete _event_loop_handle;
+
+        destructor_gate->open();
       },
-      DISALLOW_SHORT_CIRCUIT);
+      ALLOW_SHORT_CIRCUIT);
+
+  destructor_gate->arrive(old);
 }
 
 
