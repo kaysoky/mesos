@@ -4316,6 +4316,266 @@ TYPED_TEST(AuthorizationTest, RemoveNestedContainer)
 }
 
 
+// This tests the authorization of launching standalone containers.
+TYPED_TEST(AuthorizationTest, LaunchStandaloneContainer)
+{
+  // Setup ACLs.
+  ACLs acls;
+
+  {
+    // "admin" can launch standalone containers which runs as any user.
+    mesos::ACL::LaunchStandaloneContainer* acl =
+        acls.add_launch_standalone_containers();
+    acl->mutable_principals()->add_values("admin");
+    acl->mutable_users()->set_type(mesos::ACL::Entity::ANY);
+  }
+
+  {
+    // "hacker" cannot launch standalone containers.
+    mesos::ACL::LaunchStandaloneContainer* acl =
+        acls.add_launch_standalone_containers();
+    acl->mutable_principals()->add_values("hacker");
+    acl->mutable_users()->set_type(mesos::ACL::Entity::NONE);
+  }
+
+  {
+    // No one else can launch standalone containers.
+    mesos::ACL::LaunchStandaloneContainer* acl =
+        acls.add_launch_standalone_containers();
+    acl->mutable_principals()->set_type(mesos::ACL::Entity::ANY);
+    acl->mutable_users()->set_type(mesos::ACL::Entity::NONE);
+  }
+
+  // Create an `Authorizer` with the ACLs.
+  Try<Authorizer*> create = TypeParam::create(parameterize(acls));
+  ASSERT_SOME(create);
+  Owned<Authorizer> authorizer(create.get());
+
+  // Principal "admin" can launch a standalone container.
+  {
+    authorization::Request request;
+    request.set_action(authorization::LAUNCH_STANDALONE_CONTAINER);
+    request.mutable_subject()->set_value("admin");
+
+    AWAIT_EXPECT_TRUE(authorizer->authorized(request));
+  }
+
+  // Principal "hacker" cannot launch a standalone container.
+  {
+    authorization::Request request;
+    request.set_action(authorization::LAUNCH_STANDALONE_CONTAINER);
+    request.mutable_subject()->set_value("hacker");
+
+    AWAIT_EXPECT_FALSE(authorizer->authorized(request));
+  }
+
+  // Principal "foo" (not explicitly called out in the ACL)
+  // cannot launch a standalone container.
+  {
+    authorization::Request request;
+    request.set_action(authorization::LAUNCH_STANDALONE_CONTAINER);
+    request.mutable_subject()->set_value("foo");
+
+    AWAIT_EXPECT_FALSE(authorizer->authorized(request));
+  }
+}
+
+
+// This tests the authorization of killing standalone containers.
+TYPED_TEST(AuthorizationTest, KillStandaloneContainer)
+{
+  // Setup ACLs.
+  ACLs acls;
+
+  {
+    // "admin" can kill standalone containers running as any user.
+    mesos::ACL::KillStandaloneContainer* acl =
+        acls.add_kill_standalone_containers();
+    acl->mutable_principals()->add_values("admin");
+    acl->mutable_users()->set_type(mesos::ACL::Entity::ANY);
+  }
+
+  {
+    // "hacker" cannot kill standalone containers.
+    mesos::ACL::KillStandaloneContainer* acl =
+        acls.add_kill_standalone_containers();
+    acl->mutable_principals()->add_values("hacker");
+    acl->mutable_users()->set_type(mesos::ACL::Entity::NONE);
+  }
+
+  {
+    // No one else can kill standalone containers.
+    mesos::ACL::KillStandaloneContainer* acl =
+        acls.add_kill_standalone_containers();
+    acl->mutable_principals()->set_type(mesos::ACL::Entity::ANY);
+    acl->mutable_users()->set_type(mesos::ACL::Entity::NONE);
+  }
+
+  // Create an `Authorizer` with the ACLs.
+  Try<Authorizer*> create = TypeParam::create(parameterize(acls));
+  ASSERT_SOME(create);
+  Owned<Authorizer> authorizer(create.get());
+
+  // Principal "admin" can kill a standalone container.
+  {
+    authorization::Request request;
+    request.set_action(authorization::KILL_STANDALONE_CONTAINER);
+    request.mutable_subject()->set_value("admin");
+
+    AWAIT_EXPECT_TRUE(authorizer->authorized(request));
+  }
+
+  // Principal "hacker" cannot kill a standalone container.
+  {
+    authorization::Request request;
+    request.set_action(authorization::KILL_STANDALONE_CONTAINER);
+    request.mutable_subject()->set_value("hacker");
+
+    AWAIT_EXPECT_FALSE(authorizer->authorized(request));
+  }
+
+  // Principal "foo" (not explicitly called out in the ACL)
+  // cannot kill a standalone container.
+  {
+    authorization::Request request;
+    request.set_action(authorization::KILL_STANDALONE_CONTAINER);
+    request.mutable_subject()->set_value("foo");
+
+    AWAIT_EXPECT_FALSE(authorizer->authorized(request));
+  }
+}
+
+
+// This tests the authorization of waiting on standalone containers.
+TYPED_TEST(AuthorizationTest, WaitStandaloneContainer)
+{
+  // Setup ACLs.
+  ACLs acls;
+
+  {
+    // "admin" can wait on standalone containers running as any user.
+    mesos::ACL::WaitStandaloneContainer* acl =
+        acls.add_wait_standalone_containers();
+    acl->mutable_principals()->add_values("admin");
+    acl->mutable_users()->set_type(mesos::ACL::Entity::ANY);
+  }
+
+  {
+    // "hacker" cannot wait on standalone containers.
+    mesos::ACL::WaitStandaloneContainer* acl =
+        acls.add_wait_standalone_containers();
+    acl->mutable_principals()->add_values("hacker");
+    acl->mutable_users()->set_type(mesos::ACL::Entity::NONE);
+  }
+
+  {
+    // No one else can wait on standalone containers.
+    mesos::ACL::WaitStandaloneContainer* acl =
+        acls.add_wait_standalone_containers();
+    acl->mutable_principals()->set_type(mesos::ACL::Entity::ANY);
+    acl->mutable_users()->set_type(mesos::ACL::Entity::NONE);
+  }
+
+  // Create an `Authorizer` with the ACLs.
+  Try<Authorizer*> create = TypeParam::create(parameterize(acls));
+  ASSERT_SOME(create);
+  Owned<Authorizer> authorizer(create.get());
+
+  // Principal "admin" can wait on a standalone container.
+  {
+    authorization::Request request;
+    request.set_action(authorization::WAIT_STANDALONE_CONTAINER);
+    request.mutable_subject()->set_value("admin");
+
+    AWAIT_EXPECT_TRUE(authorizer->authorized(request));
+  }
+
+  // Principal "hacker" cannot wait on a standalone container.
+  {
+    authorization::Request request;
+    request.set_action(authorization::WAIT_STANDALONE_CONTAINER);
+    request.mutable_subject()->set_value("hacker");
+
+    AWAIT_EXPECT_FALSE(authorizer->authorized(request));
+  }
+
+  // Principal "foo" (not explicitly called out in the ACL)
+  // cannot wait on a standalone container.
+  {
+    authorization::Request request;
+    request.set_action(authorization::WAIT_STANDALONE_CONTAINER);
+    request.mutable_subject()->set_value("foo");
+
+    AWAIT_EXPECT_FALSE(authorizer->authorized(request));
+  }
+}
+
+
+// This tests the authorization of removing standalone containers.
+TYPED_TEST(AuthorizationTest, RemoveStandaloneContainer)
+{
+  // Setup ACLs.
+  ACLs acls;
+
+  {
+    // "admin" can remove standalone containers running as any user.
+    mesos::ACL::RemoveStandaloneContainer* acl =
+        acls.add_remove_standalone_containers();
+    acl->mutable_principals()->add_values("admin");
+    acl->mutable_users()->set_type(mesos::ACL::Entity::ANY);
+  }
+
+  {
+    // "hacker" cannot remove standalone containers.
+    mesos::ACL::RemoveStandaloneContainer* acl =
+        acls.add_remove_standalone_containers();
+    acl->mutable_principals()->add_values("hacker");
+    acl->mutable_users()->set_type(mesos::ACL::Entity::NONE);
+  }
+
+  {
+    // No one else can remove standalone containers.
+    mesos::ACL::RemoveStandaloneContainer* acl =
+        acls.add_remove_standalone_containers();
+    acl->mutable_principals()->set_type(mesos::ACL::Entity::ANY);
+    acl->mutable_users()->set_type(mesos::ACL::Entity::NONE);
+  }
+
+  // Create an `Authorizer` with the ACLs.
+  Try<Authorizer*> create = TypeParam::create(parameterize(acls));
+  ASSERT_SOME(create);
+  Owned<Authorizer> authorizer(create.get());
+
+  // Principal "admin" can remove a standalone container.
+  {
+    authorization::Request request;
+    request.set_action(authorization::REMOVE_STANDALONE_CONTAINER);
+    request.mutable_subject()->set_value("admin");
+
+    AWAIT_EXPECT_TRUE(authorizer->authorized(request));
+  }
+
+  // Principal "hacker" cannot remove a standalone container.
+  {
+    authorization::Request request;
+    request.set_action(authorization::REMOVE_STANDALONE_CONTAINER);
+    request.mutable_subject()->set_value("hacker");
+
+    AWAIT_EXPECT_FALSE(authorizer->authorized(request));
+  }
+
+  // Principal "foo" (not explicitly called out in the ACL)
+  // cannot remove a standalone container.
+  {
+    authorization::Request request;
+    request.set_action(authorization::REMOVE_STANDALONE_CONTAINER);
+    request.mutable_subject()->set_value("foo");
+
+    AWAIT_EXPECT_FALSE(authorizer->authorized(request));
+  }
+}
+
+
 // This tests that a missing request.object is allowed for an ACL whose
 // Object is ANY.
 // NOTE: The only usecase for this behavior is currently teardownFramework.
