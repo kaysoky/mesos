@@ -2611,7 +2611,7 @@ void MesosContainerizerProcess::______destroy(
   }
 
   // Now that we are done destroying the container we need to cleanup
-  // its runtime directory. There are two cases to consider:
+  // its runtime directory. There are the following cases to consider:
   //
   // (1) We are a nested container:
   //     In this case we should defer deletion of the runtime directory
@@ -2623,7 +2623,11 @@ void MesosContainerizerProcess::______destroy(
   //     It also prevents subsequent `destroy()` calls from attempting
   //     to cleanup the container a second time.
   //
-  // (2) We are a top-level container:
+  // (2) We are a standalone container:
+  //     This case is similar to the nested container case above, but
+  //     deletion of the runtime directory is up to the user.
+  //
+  // (3) We are a non-standalone, top-level container:
   //     We should simply remove the runtime directory. Since we build
   //     the runtime directories of nested containers hierarchically,
   //     removing the top-level runtime directory will automatically
@@ -2635,7 +2639,9 @@ void MesosContainerizerProcess::______destroy(
   const string runtimePath =
     containerizer::paths::getRuntimePath(flags.runtime_dir, containerId);
 
-  if (containerId.has_parent()) {
+  if (containerId.has_parent() ||
+      containerizer::paths::isStandaloneContainer(
+          flags.runtime_dir, containerId)) {
     const string terminationPath =
       path::join(runtimePath, containerizer::paths::TERMINATION_FILE);
 
@@ -2711,20 +2717,57 @@ Future<Nothing> MesosContainerizerProcess::remove(
 {
   // TODO(gkleiman): Check that recovery has completed before continuing.
 
-  CHECK(containerId.has_parent());
+  if (!containerId.has_parent() &&
+      !containerizer::paths::isStandaloneContainer(
+          flags.runtime_dir, containerId)) {
+    return Failure(
+      "Cannot remove a container that is neither a standalone"
+      " nor a nested container");
+  }
 
   if (containers_.contains(containerId)) {
-    return Failure("Nested container has not terminated yet");
+    return Failure("Container has not terminated yet");
   }
 
-  const ContainerID rootContainerId = protobuf::getRootContainerId(containerId);
-
-  if (!containers_.contains(rootContainerId)) {
-    return Failure("Unknown root container");
-  }
+  const ContainerID rootContainerId =
+    protobuf::getRootContainerId(containerId);
 
   const string runtimePath =
     containerizer::paths::getRuntimePath(flags.runtime_dir, containerId);
+
+  Option<string> sandboxPath;
+
+  if (containerId.has_parent()) {
+    // The runtime directory for nested containers is not deleted unless
+    // the parent container exits. So we expect the parent container to
+    // be in the set of existing containers.
+    if (!containers_.contains(rootContainerId)) {
+      return Failure("Unknown root container");
+    }
+
+    sandboxPath = containerizer::paths::getSandboxPath(
+        containers_[rootContainerId]->directory.get(), containerId);
+  } else {
+    // This must be a standalone container. Since we've already removed
+    // this container from the set of running containers (`containers_`),
+    // we'll have to read the checkpointed ContainerConfig to figure out
+    // the sandbox directory to delete.
+    Result<ContainerConfig> config =
+      containerizer::paths::getContainerConfig(flags.runtime_dir, containerId);
+
+    if (config.isError()) {
+      return Failure(
+          "Failed to get config for container " + stringify(containerId) +
+          ": " + config.error());
+    } else if (config.isSome()) {
+      sandboxPath = config->directory();
+    } else {
+      LOG(WARNING)
+        << "Unable to determine sandbox directory for standalone container '"
+        << containerId << "'. This may happen if the runtime information is"
+        << " deleted outside the jurisdiction of the Mesos containerizer.";
+    }
+  }
 
   if (os::exists(runtimePath)) {
     Try<Nothing> rmdir = os::rmdir(runtimePath);
@@ -2734,11 +2777,8 @@ Future<Nothing> MesosContainerizerProcess::remove(
     }
   }
 
-  const string sandboxPath = containerizer::paths::getSandboxPath(
-      containers_[rootContainerId]->directory.get(), containerId);
-
-  if (os::exists(sandboxPath)) {
-    Try<Nothing> rmdir = os::rmdir(sandboxPath);
+  if (sandboxPath.isSome() && os::exists(sandboxPath.get())) {
+    Try<Nothing> rmdir = os::rmdir(sandboxPath.get());
     if (rmdir.isError()) {
       return Failure(
           "Failed to remove the sandbox directory: " + rmdir.error());

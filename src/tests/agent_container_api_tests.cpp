@@ -45,10 +45,12 @@
 #include "master/detector/standalone.hpp"
 
 #include "slave/slave.hpp"
+#include "slave/paths.hpp"
 
 #include "slave/containerizer/fetcher.hpp"
 
 #include "slave/containerizer/mesos/containerizer.hpp"
+#include "slave/containerizer/mesos/paths.hpp"
 
 #include "tests/mesos.hpp"
 
@@ -882,6 +884,246 @@ TEST_P_TEMP_DISABLED_ON_WINDOWS(AgentContainerAPITest, GetContainers)
 
   ASSERT_EQ(v1::agent::Response::GET_CONTAINERS, response->type());
   EXPECT_EQ(2, response->get_containers().containers_size());
+}
+
+
+// This test launches a parent and nested container and then tries to remove
+// the container's sandbox/runtime directories. The first attempt should fail
+// because the containers are still running. A second attempt is made after
+// killing the containers, at which point the directories should be gone.
+TEST_P_TEMP_DISABLED_ON_WINDOWS(
+    AgentContainerAPITest, RemoveContainers)
+{
+  Try<Owned<cluster::Master>> master = StartMaster();
+  ASSERT_SOME(master);
+
+  Owned<MasterDetector> detector = master.get()->createDetector();
+
+  slave::Flags slaveFlags = CreateSlaveFlags();
+  slaveFlags.launcher = std::get<1>(std::get<3>(GetParam()));
+  slaveFlags.isolation = std::get<0>(std::get<3>(GetParam()));
+
+  Try<Owned<cluster::Slave>> slave = StartSlave(detector.get(), slaveFlags);
+  ASSERT_SOME(slave);
+
+  Try<v1::ContainerID> parentContainerId =
+    launchParentContainer(master.get()->pid, slave.get()->pid);
+
+  ASSERT_SOME(parentContainerId);
+
+  // Grab the SlaveID, which we may need to find the sandbox.
+  SlaveID slaveId;
+  {
+    v1::agent::Call call;
+    call.set_type(v1::agent::Call::GET_AGENT);
+
+    Future<v1::agent::Response> getAgent =
+      deserialize(post(slave.get()->pid, call));
+
+    AWAIT_ASSERT_READY(getAgent);
+
+    ASSERT_TRUE(getAgent->get_agent().has_agent_info());
+    ASSERT_TRUE(getAgent->get_agent().agent_info().has_id());
+
+    slaveId.set_value(getAgent->get_agent().agent_info().id().value());
+  }
+
+  // Check that the parent sandbox exists.
+  string parentSandbox;
+  switch (std::get<0>(GetParam())) {
+    case ContainerLaunchType::NORMAL: {
+      // Use the GET_CONTAINERS call to get the metadata necessary to
+      // build up the sandbox directory.
+      v1::agent::Call call;
+      call.set_type(v1::agent::Call::GET_CONTAINERS);
+
+      Future<v1::agent::Response> containers =
+        deserialize(post(slave.get()->pid, call));
+
+      AWAIT_ASSERT_READY(containers);
+
+      ASSERT_EQ(1, containers->get_containers().containers_size());
+
+      parentSandbox = slave::paths::getExecutorRunPath(
+          slaveFlags.work_dir,
+          slaveId,
+          devolve(containers->get_containers().containers(0).framework_id()),
+          devolve(containers->get_containers().containers(0).executor_id()),
+          devolve(parentContainerId.get()));
+      break;
+    }
+
+    case ContainerLaunchType::STANDALONE: {
+      parentSandbox = slave::paths::getContainerPath(
+          slaveFlags.work_dir,
+          devolve(parentContainerId.get()));
+      break;
+    }
+  }
+
+  ASSERT_TRUE(os::exists(parentSandbox));
+
+  // Launch a nested container and wait for it to finish.
+  v1::ContainerID containerId;
+  containerId.set_value(id::UUID::random().toString());
+  containerId.mutable_parent()->CopyFrom(parentContainerId.get());
+
+  AWAIT_EXPECT_RESPONSE_STATUS_EQ(
+      http::OK().status,
+      launchNestedContainer(slave.get()->pid, containerId));
+
+  Future<v1::agent::Response> wait =
+    deserialize(waitNestedContainer(slave.get()->pid, containerId));
+
+  EXPECT_TRUE(wait.isPending());
+
+  // Check that the nested container sandbox exists.
+  const string nestedSandbox = slave::containerizer::paths::getSandboxPath(
+      parentSandbox, devolve(containerId));
+
+  ASSERT_TRUE(os::exists(nestedSandbox));
+
+  // Attempt to remove the containers. This should fail.
+  // We try both types of calls on both parent and child containers.
+  //
+  // TODO(josephw): The error codes on these should probably be
+  // 400 Bad Request because the containers are still running.
+  {
+    v1::agent::Call call;
+    call.set_type(v1::agent::Call::REMOVE_NESTED_CONTAINER);
+
+    call.mutable_remove_nested_container()->mutable_container_id()
+      ->CopyFrom(containerId);
+
+    AWAIT_EXPECT_RESPONSE_STATUS_EQ(
+        http::InternalServerError().status,
+        post(slave.get()->pid, call));
+  }
+
+  {
+    v1::agent::Call call;
+    call.set_type(v1::agent::Call::REMOVE_NESTED_CONTAINER);
+
+    call.mutable_remove_nested_container()->mutable_container_id()
+      ->CopyFrom(parentContainerId.get());
+
+    AWAIT_EXPECT_RESPONSE_STATUS_EQ(
+        http::BadRequest().status,
+        post(slave.get()->pid, call));
+  }
+
+  {
+    v1::agent::Call call;
+    call.set_type(v1::agent::Call::REMOVE_CONTAINER);
+
+    call.mutable_remove_container()->mutable_container_id()
+      ->CopyFrom(containerId);
+
+    AWAIT_EXPECT_RESPONSE_STATUS_EQ(
+        http::InternalServerError().status,
+        post(slave.get()->pid, call));
+  }
+
+  {
+    v1::agent::Call call;
+    call.set_type(v1::agent::Call::REMOVE_CONTAINER);
+
+    call.mutable_remove_container()->mutable_container_id()
+      ->CopyFrom(parentContainerId.get());
+
+    AWAIT_EXPECT_RESPONSE_STATUS_EQ(
+        http::InternalServerError().status,
+        post(slave.get()->pid, call));
+  }
+
+  // Now kill the nested container so that we can remove it.
+  AWAIT_EXPECT_RESPONSE_STATUS_EQ(
+      http::OK().status,
+      killNestedContainer(slave.get()->pid, containerId));
+
+  AWAIT_READY(wait);
+  EXPECT_TRUE(checkWaitContainerResponse(wait, SIGKILL));
+
+  // Unlike above, we'll actually use the corresponding call to
+  // (hopefully) successfully remove the sandbox/runtime directories.
+  switch (std::get<1>(GetParam())) {
+    case ContainerLaunchType::NORMAL: {
+    v1::agent::Call call;
+    call.set_type(v1::agent::Call::REMOVE_NESTED_CONTAINER);
+
+    call.mutable_remove_nested_container()->mutable_container_id()
+      ->CopyFrom(containerId);
+
+    AWAIT_EXPECT_RESPONSE_STATUS_EQ(
+        http::OK().status,
+        post(slave.get()->pid, call));
+      break;
+    }
+
+    case ContainerLaunchType::STANDALONE: {
+      v1::agent::Call call;
+      call.set_type(v1::agent::Call::REMOVE_CONTAINER);
+
+      call.mutable_remove_container()->mutable_container_id()
+        ->CopyFrom(containerId);
+
+      AWAIT_EXPECT_RESPONSE_STATUS_EQ(
+          http::OK().status,
+          post(slave.get()->pid, call));
+      break;
+    }
+  }
+
+  // Nested container sandbox should be gone now.
+  ASSERT_FALSE(os::exists(nestedSandbox));
+
+  // This part of the test only matters for standalone parent containers.
+  if (std::get<0>(GetParam()) == ContainerLaunchType::STANDALONE) {
+    Future<http::Response> waitParent;
+    {
+      v1::agent::Call call;
+      call.set_type(v1::agent::Call::WAIT_CONTAINER);
+
+      call.mutable_wait_container()->mutable_container_id()
+        ->CopyFrom(parentContainerId.get());
+
+      waitParent = post(slave.get()->pid, call);
+    }
+
+    // Kill the parent container and wait for it to exit.
+    {
+      v1::agent::Call call;
+      call.set_type(v1::agent::Call::KILL_CONTAINER);
+
+      call.mutable_kill_container()->mutable_container_id()
+        ->CopyFrom(parentContainerId.get());
+
+      AWAIT_EXPECT_RESPONSE_STATUS_EQ(
+          http::OK().status,
+          post(slave.get()->pid, call));
+    }
+
+    AWAIT_READY(waitParent);
+
+    // At this point, the sandbox should still exist.
+    ASSERT_TRUE(os::exists(parentSandbox));
+
+    // Now remove the parent container.
+    {
+      v1::agent::Call call;
+      call.set_type(v1::agent::Call::REMOVE_CONTAINER);
+
+      call.mutable_remove_container()->mutable_container_id()
+        ->CopyFrom(parentContainerId.get());
+
+      AWAIT_EXPECT_RESPONSE_STATUS_EQ(
+          http::OK().status,
+          post(slave.get()->pid, call));
+    }
+
+    // And the sandbox should be gone too.
+    ASSERT_FALSE(os::exists(parentSandbox));
+  }
 }
 
 } // namespace tests {
