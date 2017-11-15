@@ -4321,6 +4321,72 @@ TEST_P(AgentAPITest, GetContainers)
 }
 
 
+// This test checks that standalone containers do *NOT* show up in
+// the output of the GET_CONTAINERS call.
+TEST_P(AgentAPITest, GetStandaloneContainers)
+{
+  Try<Owned<cluster::Master>> master = StartMaster();
+  ASSERT_SOME(master);
+
+  StandaloneMasterDetector detector(master.get()->pid);
+
+  Try<Owned<cluster::Slave>> slave = StartSlave(&detector);
+  ASSERT_SOME(slave);
+
+  // Wait for the agent to finish registering.
+  Future<SlaveRegisteredMessage> slaveRegisteredMessage =
+    FUTURE_PROTOBUF(SlaveRegisteredMessage(), _, _);
+
+  AWAIT_READY(slaveRegisteredMessage);
+
+  // Launch a standalone parent container.
+  {
+    v1::ContainerID containerId;
+    containerId.set_value(id::UUID::random().toString());
+
+    v1::agent::Call call;
+    call.set_type(v1::agent::Call::LAUNCH_CONTAINER);
+
+    call.mutable_launch_container()->mutable_container_id()
+      ->CopyFrom(containerId);
+
+    call.mutable_launch_container()->mutable_command()
+      ->set_value(SLEEP_COMMAND(1000));
+
+    v1::Resources resources = v1::Resources::parse("cpus:0.1;mem:32").get();
+    call.mutable_launch_container()->mutable_resources()
+      ->CopyFrom(resources);
+
+    ContentType contentType = GetParam();
+
+    Future<http::Response> response = http::post(
+      slave.get()->pid,
+      "api/v1",
+      createBasicAuthHeaders(DEFAULT_CREDENTIAL),
+      serialize(contentType, call),
+      stringify(contentType));
+
+    AWAIT_EXPECT_RESPONSE_STATUS_EQ(http::OK().status, response);
+  }
+
+  // We don't expect standalone containers to show up in this call.
+  {
+    v1::agent::Call call;
+    call.set_type(v1::agent::Call::GET_CONTAINERS);
+
+    ContentType contentType = GetParam();
+
+    Future<v1::agent::Response> response =
+      post(slave.get()->pid, call, contentType);
+
+    AWAIT_READY(response);
+    ASSERT_TRUE(response->IsInitialized());
+    ASSERT_EQ(v1::agent::Response::GET_CONTAINERS, response->type());
+    ASSERT_TRUE(response->get_containers().containers().empty());
+  }
+}
+
+
 // This test verifies if we can retrieve file data in the agent.
 TEST_P(AgentAPITest, ReadFile)
 {
