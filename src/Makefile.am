@@ -2445,6 +2445,7 @@ noinst_LTLIBRARIES += $(MESOS_TEST_MODULES)
 endif
 
 mesos_tests_SOURCES =						\
+  resource_provider/uri_volume_profile.cpp			\
   slave/qos_controllers/load.cpp				\
   tests/active_user_test_helper.cpp				\
   tests/agent_container_api_tests.cpp				\
@@ -2541,6 +2542,7 @@ mesos_tests_SOURCES =						\
   tests/uri_fetcher_tests.cpp					\
   tests/utils.cpp						\
   tests/values_tests.cpp					\
+  tests/volume_profile_tests.cpp				\
   tests/zookeeper_url_tests.cpp					\
   tests/common/command_utils_tests.cpp				\
   tests/common/http_tests.cpp					\
