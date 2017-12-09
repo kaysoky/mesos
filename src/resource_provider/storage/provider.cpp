@@ -18,6 +18,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <memory>
 #include <numeric>
 
 #include <glog/logging.h>
@@ -36,6 +37,7 @@
 #include <mesos/type_utils.hpp>
 
 #include <mesos/resource_provider/resource_provider.hpp>
+#include <mesos/resource_provider/volume_profile.hpp>
 
 #include <mesos/v1/resource_provider.hpp>
 
@@ -282,6 +284,7 @@ public:
       const http::URL& _url,
       const string& _workDir,
       const ResourceProviderInfo& _info,
+      const shared_ptr<VolumeProfileAdaptor>& _volumeProfileAdaptor,
       const SlaveID& _slaveId,
       const Option<string>& _authToken,
       bool _strict)
@@ -292,6 +295,7 @@ public:
       metaDir(slave::paths::getMetaRootDir(_workDir)),
       contentType(ContentType::PROTOBUF),
       info(_info),
+      volumeProfileAdaptor(_volumeProfileAdaptor),
       slaveId(_slaveId),
       authToken(_authToken),
       strict(_strict),
@@ -404,6 +408,7 @@ private:
   const string metaDir;
   const ContentType contentType;
   ResourceProviderInfo info;
+  shared_ptr<VolumeProfileAdaptor> volumeProfileAdaptor;
   const SlaveID slaveId;
   const Option<string> authToken;
   const bool strict;
@@ -2801,6 +2806,7 @@ Try<Owned<LocalResourceProvider>> StorageLocalResourceProvider::create(
     const http::URL& url,
     const string& workDir,
     const ResourceProviderInfo& info,
+    const shared_ptr<VolumeProfileAdaptor>& volumeProfileAdaptor,
     const SlaveID& slaveId,
     const Option<string>& authToken,
     bool strict)
@@ -2856,7 +2862,7 @@ Try<Owned<LocalResourceProvider>> StorageLocalResourceProvider::create(
   }
 
   return Owned<LocalResourceProvider>(new StorageLocalResourceProvider(
-      url, workDir, info, slaveId, authToken, strict));
+      url, workDir, info, volumeProfileAdaptor, slaveId, authToken, strict));
 }
 
 
@@ -2873,11 +2879,12 @@ StorageLocalResourceProvider::StorageLocalResourceProvider(
     const http::URL& url,
     const string& workDir,
     const ResourceProviderInfo& info,
+    const shared_ptr<VolumeProfileAdaptor>& volumeProfileAdaptor,
     const SlaveID& slaveId,
     const Option<string>& authToken,
     bool strict)
   : process(new StorageLocalResourceProviderProcess(
-        url, workDir, info, slaveId, authToken, strict))
+        url, workDir, info, volumeProfileAdaptor, slaveId, authToken, strict))
 {
   spawn(CHECK_NOTNULL(process.get()));
 }

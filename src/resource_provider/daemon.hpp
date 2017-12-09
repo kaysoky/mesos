@@ -17,11 +17,14 @@
 #ifndef __RESOURCE_PROVIDER_DAEMON_HPP__
 #define __RESOURCE_PROVIDER_DAEMON_HPP__
 
+#include <memory>
 #include <string>
 
 #include <mesos/mesos.hpp>
 
 #include <mesos/authentication/secret_generator.hpp>
+
+#include <mesos/resource_provider/volume_profile.hpp>
 
 #include <process/http.hpp>
 #include <process/owned.hpp>
@@ -70,6 +73,7 @@ private:
       const process::http::URL& url,
       const std::string& workDir,
       const Option<std::string>& configDir,
+      const std::shared_ptr<VolumeProfileAdaptor>& volumeProfileAdaptor,
       SecretGenerator* secretGenerator,
       bool strict);
 

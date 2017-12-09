@@ -36,6 +36,7 @@ Try<Owned<LocalResourceProvider>> LocalResourceProvider::create(
     const http::URL& url,
     const string& workDir,
     const ResourceProviderInfo& info,
+    const std::shared_ptr<VolumeProfileAdaptor>& volumeProfileAdaptor,
     const SlaveID& slaveId,
     const Option<string>& authToken,
     bool strict)
@@ -49,7 +50,7 @@ Try<Owned<LocalResourceProvider>> LocalResourceProvider::create(
 
   if (creators.contains(info.type())) {
     return creators.at(info.type())(
-        url, workDir, info, slaveId, authToken, strict);
+        url, workDir, info, volumeProfileAdaptor, slaveId, authToken, strict);
   }
 
   return Error("Unknown local resource provider type '" + info.type() + "'");

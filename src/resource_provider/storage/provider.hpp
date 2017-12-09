@@ -17,12 +17,16 @@
 #ifndef __RESOURCE_PROVIDER_STORAGE_PROVIDER_HPP__
 #define __RESOURCE_PROVIDER_STORAGE_PROVIDER_HPP__
 
+#include <memory>
+
 #include <process/http.hpp>
 #include <process/owned.hpp>
 
 #include <stout/try.hpp>
 
 #include <mesos/mesos.hpp>
+
+#include <mesos/resource_provider/volume_profile.hpp>
 
 #include "resource_provider/local.hpp"
 
@@ -40,6 +44,7 @@ public:
       const process::http::URL& url,
       const std::string& workDir,
       const mesos::ResourceProviderInfo& info,
+      const std::shared_ptr<VolumeProfileAdaptor>& volumeProfileAdaptor,
       const SlaveID& slaveId,
       const Option<std::string>& authToken,
       bool strict);
@@ -60,6 +65,7 @@ private:
       const process::http::URL& url,
       const std::string& workDir,
       const mesos::ResourceProviderInfo& info,
+      const std::shared_ptr<VolumeProfileAdaptor>& volumeProfileAdaptor,
       const SlaveID& slaveId,
       const Option<std::string>& authToken,
       bool strict);

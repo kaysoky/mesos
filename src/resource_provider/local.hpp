@@ -17,7 +17,11 @@
 #ifndef __RESOURCE_PROVIDER_LOCAL_HPP__
 #define __RESOURCE_PROVIDER_LOCAL_HPP__
 
+#include <memory>
+
 #include <mesos/mesos.hpp>
+
+#include <mesos/resource_provider/volume_profile.hpp>
 
 #include <process/authenticator.hpp>
 #include <process/http.hpp>
@@ -35,6 +39,7 @@ public:
       const process::http::URL& url,
       const std::string& workDir,
       const ResourceProviderInfo& info,
+      const std::shared_ptr<VolumeProfileAdaptor>& volumeProfileAdaptor,
       const SlaveID& slaveId,
       const Option<std::string>& authToken,
       bool strict);

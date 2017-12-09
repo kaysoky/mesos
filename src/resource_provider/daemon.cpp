@@ -16,11 +16,14 @@
 
 #include "resource_provider/daemon.hpp"
 
+#include <memory>
 #include <utility>
 
 #include <glog/logging.h>
 
 #include <mesos/type_utils.hpp>
+
+#include <mesos/resource_provider/volume_profile.hpp>
 
 #include <process/defer.hpp>
 #include <process/dispatch.hpp>
@@ -77,12 +80,14 @@ public:
       const http::URL& _url,
       const string& _workDir,
       const Option<string>& _configDir,
+      const std::shared_ptr<VolumeProfileAdaptor>& _volumeProfileAdaptor,
       SecretGenerator* _secretGenerator,
       bool _strict)
     : ProcessBase(process::ID::generate("local-resource-provider-daemon")),
       url(_url),
       workDir(_workDir),
       configDir(_configDir),
+      volumeProfileAdaptor(_volumeProfileAdaptor),
       secretGenerator(_secretGenerator),
       strict(_strict) {}
 
@@ -136,6 +141,10 @@ private:
   const http::URL url;
   const string workDir;
   const Option<string> configDir;
+
+  // NOTE: This module is shared between all storage local resource providers.
+  std::shared_ptr<VolumeProfileAdaptor> volumeProfileAdaptor;
+
   SecretGenerator* const secretGenerator;
   const bool strict;
 
@@ -443,7 +452,13 @@ Future<Nothing> LocalResourceProviderDaemonProcess::_launch(
   }
 
   Try<Owned<LocalResourceProvider>> provider = LocalResourceProvider::create(
-      url, workDir, data.info, slaveId.get(), authToken, strict);
+      url,
+      workDir,
+      data.info,
+      volumeProfileAdaptor,
+      slaveId.get(),
+      authToken,
+      strict);
 
   if (provider.isError()) {
     return Failure(
@@ -506,10 +521,19 @@ Try<Owned<LocalResourceProviderDaemon>> LocalResourceProviderDaemon::create(
     return Error("Config directory '" + configDir.get() + "' does not exist");
   }
 
+  Try<VolumeProfileAdaptor*> adaptor =
+    VolumeProfileAdaptor::create(flags.volume_profile_adaptor);
+
+  if (adaptor.isError()) {
+    return Error(
+        "Failed to initialize volume profile adaptor: " + adaptor.error());
+  }
+
   return new LocalResourceProviderDaemon(
       url,
       flags.work_dir,
       configDir,
+      std::shared_ptr<VolumeProfileAdaptor>(adaptor.get()),
       secretGenerator,
       flags.strict);
 }
@@ -519,10 +543,11 @@ LocalResourceProviderDaemon::LocalResourceProviderDaemon(
     const http::URL& url,
     const string& workDir,
     const Option<string>& configDir,
+    const std::shared_ptr<VolumeProfileAdaptor>& volumeProfileAdaptor,
     SecretGenerator* secretGenerator,
     bool strict)
   : process(new LocalResourceProviderDaemonProcess(
-        url, workDir, configDir, secretGenerator, strict))
+        url, workDir, configDir, volumeProfileAdaptor, secretGenerator, strict))
 {
   spawn(CHECK_NOTNULL(process.get()));
 }
