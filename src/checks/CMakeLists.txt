@@ -17,4 +17,4 @@
 # THE MESOS TCP CONNECT EXECUTABLE.
 ###################################
 add_executable(mesos-tcp-connect tcp_connect.cpp)
-target_link_libraries(mesos-tcp-connect PRIVATE mesos)
+target_link_libraries(mesos-tcp-connect PRIVATE process)
