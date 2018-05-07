@@ -84,7 +84,12 @@
 #include "common/protobuf_utils.hpp"
 
 #include "local/flags.hpp"
+
+// NOTE: This is disabled on CMake because this header requires us to
+// include basically the entire Mesos source tree.
+#ifndef USE_CMAKE_BUILD_CONFIG
 #include "local/local.hpp"
+#endif // USE_CMAKE_BUILD_CONFIG
 
 #include "logging/flags.hpp"
 #include "logging/logging.hpp"
@@ -1756,11 +1761,14 @@ void MesosSchedulerDriver::initialize() {
     }
   }
 
-  // Launch a local cluster if necessary.
   Option<UPID> pid;
+
+#ifndef USE_CMAKE_BUILD_CONFIG
+  // Launch a local cluster if necessary.
   if (master == "local") {
     pid = local::launch(flags);
   }
+#endif // USE_CMAKE_BUILD_CONFIG
 
   CHECK(process == nullptr);
 
@@ -1893,10 +1901,12 @@ MesosSchedulerDriver::~MesosSchedulerDriver()
 
   detector.reset();
 
+#ifndef USE_CMAKE_BUILD_CONFIG
   // Check and see if we need to shutdown a local cluster.
   if (master == "local" || master == "localquiet") {
     local::shutdown();
   }
+#endif // USE_CMAKE_BUILD_CONFIG
 }
 
 

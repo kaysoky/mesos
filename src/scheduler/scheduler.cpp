@@ -83,7 +83,11 @@
 #include "internal/devolve.hpp"
 #include "internal/evolve.hpp"
 
+// NOTE: This is disabled on CMake because this header requires us to
+// include basically the entire Mesos source tree.
+#ifndef USE_CMAKE_BUILD_CONFIG
 #include "local/local.hpp"
+#endif // USE_CMAKE_BUILD_CONFIG
 
 #include "logging/logging.hpp"
 
@@ -188,12 +192,15 @@ public:
 
     LOG(INFO) << "Version: " << MESOS_VERSION;
 
-    // Launch a local cluster if necessary.
     Option<UPID> pid = None();
+
+#ifndef USE_CMAKE_BUILD_CONFIG
+    // Launch a local cluster if necessary.
     if (master == "local") {
       pid = local::launch(flags);
       local = true;
     }
+#endif // USE_CMAKE_BUILD_CONFIG
 
     if (_detector.isNone()) {
       Try<MasterDetector*> create =
@@ -214,10 +221,12 @@ public:
   {
     disconnect();
 
+#ifndef USE_CMAKE_BUILD_CONFIG
     // Check and see if we need to shutdown a local cluster.
     if (local) {
       local::shutdown();
     }
+#endif // USE_CMAKE_BUILD_CONFIG
 
     // Note that we ignore any callbacks that are enqueued.
   }

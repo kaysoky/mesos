@@ -167,7 +167,11 @@ if (NOT WIN32)
     disk_profile_adaptor_tests.cpp
     disk_quota_tests.cpp
     dynamic_weights_tests.cpp
-    examples_tests.cpp
+
+    # TODO(josephw): These examples require schedulers to launch "local"
+    # clusters, which is disabled in the CMake build.
+    # examples_tests.cpp
+
     fetcher_cache_tests.cpp
     log_tests.cpp
     logging_tests.cpp
