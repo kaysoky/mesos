@@ -230,6 +230,21 @@ target_link_libraries(
   mesos-detector)
 
 
+# MESOS HDFS LIBRARY.
+#####################
+set(HDFS_SRC
+  hdfs/hdfs.cpp
+
+  # NOTE: This also appears in `URI_SRC`.
+  uri/utils.cpp)
+
+add_library(mesos-hdfs ${HDFS_SRC})
+
+target_link_libraries(
+  mesos-hdfs PUBLIC
+  mesos-common)
+
+
 # SOURCE FILES FOR THE MESOS LIBRARY.
 #####################################
 set(AGENT_SRC
@@ -323,9 +338,6 @@ set(EXECUTOR_SRC
 
 set(FILES_SRC
   files/files.cpp)
-
-set(HDFS_SRC
-  hdfs/hdfs.cpp)
 
 set(HEALTH_CHECK_SRC
   checks/checker.cpp
@@ -528,7 +540,6 @@ set(MESOS_SRC
   ${DOCKER_SRC}
   ${EXECUTOR_SRC}
   ${FILES_SRC}
-  ${HDFS_SRC}
   ${HEALTH_CHECK_SRC}
   ${LOCAL_SRC}
   ${MASTER_SRC}
@@ -607,6 +618,7 @@ target_link_libraries(
   # libraries. Downstream targets like tests still expect all sources to be
   # globbed together into one library.
   mesos-detector
+  mesos-hdfs
   mesos-protobufs
   mesos-scheduler
 

@@ -18,7 +18,7 @@
 # Utility used to schedule and run a command in a mesos cluster.
 ################################################################
 add_executable(mesos-execute execute.cpp)
-target_link_libraries(mesos-execute PRIVATE mesos)
+target_link_libraries(mesos-execute PRIVATE mesos-scheduler mesos-hdfs)
 
 # MESOS RESOLVE.
 # Utility used to determine the current leading master.
