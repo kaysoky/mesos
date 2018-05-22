@@ -116,6 +116,7 @@ target_include_directories(
   mesos-protobufs
   PUBLIC
   ${MESOS_PROTOBUF_HEADER_INCLUDE_DIRS}
+  ${MESOS_PUBLIC_INCLUDE_DIR}
   ${PUBLIC_PROTOBUF_INCLUDE_DIR}
 
   PRIVATE
@@ -129,11 +130,104 @@ if (HAS_JAVA)
 endif ()
 
 
-# Configure Mesos files.
+# CONFIGURE MESOS FILES.
 ########################
 configure_file(
   ${MESOS_PUBLIC_INCLUDE_DIR}/mesos/version.hpp.in
   ${MESOS_BIN_INCLUDE_DIR}/mesos/version.hpp)
+
+
+# COMMON MESOS LIBRARY.
+#######################
+# These are sources used by most Mesos components,
+# including the Mesos Master, Agent, Scheduler, and Executor.
+set(COMMON_SRC
+  authentication/cram_md5/authenticatee.cpp
+  authentication/cram_md5/authenticator.cpp
+  authentication/cram_md5/auxprop.cpp
+  authentication/http/basic_authenticatee.cpp
+  authentication/http/basic_authenticator_factory.cpp
+  authentication/http/combined_authenticator.cpp
+
+  common/attributes.cpp
+  common/authorization.cpp
+  common/build.cpp
+  common/command_utils.cpp
+  common/http.cpp
+  common/protobuf_utils.cpp
+  common/resource_quantities.cpp
+  common/resources.cpp
+  common/resources_utils.cpp
+  common/roles.cpp
+  common/type_utils.cpp
+  common/validation.cpp
+  common/values.cpp
+
+  hook/manager.cpp
+
+  internal/devolve.cpp
+  internal/evolve.cpp
+
+  logging/flags.cpp
+  logging/logging.cpp
+
+  master/constants.cpp
+
+  messages/messages.cpp
+
+  module/manager.cpp
+
+  v1/attributes.cpp
+  v1/mesos.cpp
+  v1/resources.cpp
+  v1/values.cpp
+
+  version/version.cpp)
+
+add_library(mesos-common ${COMMON_SRC})
+target_compile_definitions(mesos-common PUBLIC USE_CMAKE_BUILD_CONFIG)
+
+target_link_libraries(
+  mesos-common PUBLIC
+  process
+  sasl2
+  mesos-protobufs)
+
+
+# MESOS DETECTOR LIBRARY.
+#########################
+# These are sources used by the Master, Agent, and Scheduler to detect
+# the leading Master.
+set(DETECTOR_SRC
+  master/detector/detector.cpp
+  master/detector/standalone.cpp
+  master/detector/zookeeper.cpp
+
+  zookeeper/authentication.cpp
+  zookeeper/detector.cpp
+  zookeeper/group.cpp
+  zookeeper/zookeeper.cpp)
+
+add_library(mesos-detector ${DETECTOR_SRC})
+
+target_link_libraries(
+  mesos-detector PUBLIC
+  mesos-common
+  zookeeper)
+
+
+# MESOS SCHEDULER LIBRARY.
+##########################
+set(SCHEDULER_SRC
+  sched/sched.cpp
+  scheduler/scheduler.cpp
+  scheduler/validation.cpp)
+
+add_library(mesos-scheduler ${SCHEDULER_SRC})
+
+target_link_libraries(
+  mesos-scheduler PUBLIC
+  mesos-detector)
 
 
 # SOURCE FILES FOR THE MESOS LIBRARY.
@@ -202,14 +296,6 @@ endif ()
 set(APPC_SRC
   appc/spec.cpp)
 
-set(AUTHENTICATION_SRC
-  authentication/cram_md5/authenticatee.cpp
-  authentication/cram_md5/authenticator.cpp
-  authentication/cram_md5/auxprop.cpp
-  authentication/http/basic_authenticatee.cpp
-  authentication/http/basic_authenticator_factory.cpp
-  authentication/http/combined_authenticator.cpp)
-
 if (ENABLE_SSL)
   list(APPEND AUTHENTICATION_SRC
     authentication/executor/jwt_secret_generator.cpp)
@@ -219,21 +305,6 @@ set(AUTHORIZER_SRC
   authorizer/acls.cpp
   authorizer/authorizer.cpp
   authorizer/local/authorizer.cpp)
-
-set(COMMON_SRC
-  common/authorization.cpp
-  common/attributes.cpp
-  common/build.cpp
-  common/command_utils.cpp
-  common/http.cpp
-  common/protobuf_utils.cpp
-  common/resources.cpp
-  common/resource_quantities.cpp
-  common/resources_utils.cpp
-  common/roles.cpp
-  common/type_utils.cpp
-  common/validation.cpp
-  common/values.cpp)
 
 set(CSI_SRC
   csi/client.cpp
@@ -260,10 +331,6 @@ set(HEALTH_CHECK_SRC
   checks/checker.cpp
   checks/checker_process.cpp
   checks/health_checker.cpp)
-
-set(INTERNAL_SRC
-  internal/devolve.cpp
-  internal/evolve.cpp)
 
 set(LINUX_SRC
   linux/capabilities.cpp
@@ -359,12 +426,7 @@ set(LOG_SRC
   log/tool/read.cpp
   log/tool/replica.cpp)
 
-set(LOGGING_SRC
-  logging/flags.cpp
-  logging/logging.cpp)
-
 set(MASTER_SRC
-  master/constants.cpp
   master/flags.cpp
   master/framework.cpp
   master/http.cpp
@@ -388,16 +450,10 @@ set(MASTER_SRC
   master/contender/contender.cpp
   master/contender/standalone.cpp
   master/contender/zookeeper.cpp
-  master/detector/detector.cpp
-  master/detector/standalone.cpp
-  master/detector/zookeeper.cpp)
 
-set(MESSAGES_SRC
-  messages/messages.cpp)
-
-set(MODULE_SRC
-  hook/manager.cpp
-  module/manager.cpp)
+  # NOTE: This intentionally appears twice (see `SCHEDULER_SRC`), as it is
+  # a small helper method used in both Master and Scheduler.
+  scheduler/validation.cpp)
 
 set(OCI_SRC
   oci/spec.cpp)
@@ -422,11 +478,6 @@ if (NOT WIN32)
   list(APPEND RESOURCE_PROVIDER_SRC
     resource_provider/storage/provider.cpp)
 endif ()
-
-set(SCHEDULER_SRC
-  sched/sched.cpp
-  scheduler/scheduler.cpp
-  scheduler/validation.cpp)
 
 set(SECRET_SRC
   secret/resolver.cpp)
@@ -455,15 +506,6 @@ set(URI_SRC
 set(USAGE_SRC
   usage/usage.cpp)
 
-set(V1_SRC
-  v1/attributes.cpp
-  v1/mesos.cpp
-  v1/resources.cpp
-  v1/values.cpp)
-
-set(VERSION_SRC
-  version/version.cpp)
-
 set(WATCHER_SRC
   watcher/whitelist_watcher.cpp)
 
@@ -476,40 +518,27 @@ set(WIN32_SRC
   slave/containerizer/mesos/isolators/filesystem/windows.cpp)
 
 set(ZOOKEEPER_SRC
-  zookeeper/authentication.cpp
-  zookeeper/contender.cpp
-  zookeeper/detector.cpp
-  zookeeper/zookeeper.cpp
-  zookeeper/group.cpp)
+  zookeeper/contender.cpp)
 
 set(MESOS_SRC
   ${AGENT_SRC}
   ${APPC_SRC}
-  ${AUTHENTICATION_SRC}
   ${AUTHORIZER_SRC}
-  ${COMMON_SRC}
   ${CSI_SRC}
   ${DOCKER_SRC}
   ${EXECUTOR_SRC}
   ${FILES_SRC}
   ${HDFS_SRC}
   ${HEALTH_CHECK_SRC}
-  ${INTERNAL_SRC}
   ${LOCAL_SRC}
-  ${LOGGING_SRC}
   ${MASTER_SRC}
-  ${MESSAGES_SRC}
-  ${MODULE_SRC}
   ${OCI_SRC}
   ${RESOURCE_PROVIDER_SRC}
-  ${SCHEDULER_SRC}
   ${SECRET_SRC}
   ${STATE_SRC}
   ${STATUS_UPDATE_MANAGER_SRC}
   ${URI_SRC}
   ${USAGE_SRC}
-  ${V1_SRC}
-  ${VERSION_SRC}
   ${WATCHER_SRC}
   ${ZOOKEEPER_SRC})
 
@@ -558,14 +587,12 @@ set_target_properties(
 
 target_compile_definitions(
   mesos PUBLIC
-  USE_CMAKE_BUILD_CONFIG
   $<$<BOOL:${ENABLE_XFS_DISK_ISOLATOR}>:ENABLE_XFS_DISK_ISOLATOR>
   $<$<BOOL:${ENABLE_PORT_MAPPING_ISOLATOR}>:ENABLE_PORT_MAPPING_ISOLATOR>
   $<$<BOOL:${ENABLE_NETWORK_PORTS_ISOLATOR}>:ENABLE_NETWORK_PORTS_ISOLATOR>)
 
 target_include_directories(
   mesos PUBLIC
-  ${MESOS_PUBLIC_INCLUDE_DIR}
   ${MESOS_BIN_INCLUDE_DIR}
   ${MESOS_BIN_SRC_DIR}
   ${MESOS_SRC_DIR})
@@ -575,7 +602,14 @@ target_link_libraries(
   process
   sasl2
   zookeeper
+
+  # TODO(josephw): This is temporary as libmesos is partitioned into smaller
+  # libraries. Downstream targets like tests still expect all sources to be
+  # globbed together into one library.
+  mesos-detector
   mesos-protobufs
+  mesos-scheduler
+
   $<$<PLATFORM_ID:Linux>:nvml>
   $<$<BOOL:${HAS_JAVA}>:mesos-java>)
 
