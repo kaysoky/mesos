@@ -86,6 +86,8 @@
 #include "mesos/mesos.hpp"
 #include "mesos/resources.hpp"
 
+#include "scheduler/validation.hpp"
+
 #include "version/version.hpp"
 
 using google::protobuf::RepeatedPtrField;

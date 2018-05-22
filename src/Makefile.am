@@ -1142,6 +1142,8 @@ libmesos_no_3rdparty_la_SOURCES +=					\
   scheduler/constants.hpp						\
   scheduler/flags.hpp							\
   scheduler/scheduler.cpp						\
+  scheduler/validation.hpp						\
+  scheduler/validation.cpp						\
   secret/resolver.cpp							\
   slave/compatibility.cpp						\
   slave/compatibility.hpp						\

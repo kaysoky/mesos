@@ -24,8 +24,6 @@
 #include <mesos/mesos.hpp>
 #include <mesos/resources.hpp>
 
-#include <mesos/scheduler/scheduler.hpp>
-
 #include <mesos/master/master.hpp>
 
 #include <process/authenticator.hpp>
@@ -114,20 +112,6 @@ Option<Error> validateFrameworkId(const mesos::FrameworkInfo& frameworkInfo);
 Option<Error> validate(const mesos::FrameworkInfo& frameworkInfo);
 
 } // namespace framework {
-
-
-namespace scheduler {
-namespace call {
-
-// Validates that a scheduler::Call is well-formed.
-// TODO(bmahler): Add unit tests.
-Option<Error> validate(
-    const mesos::scheduler::Call& call,
-    const Option<process::http::authentication::Principal>& principal = None());
-
-} // namespace call {
-} // namespace scheduler {
-
 
 namespace resource {
 

@@ -425,7 +425,8 @@ endif ()
 
 set(SCHEDULER_SRC
   sched/sched.cpp
-  scheduler/scheduler.cpp)
+  scheduler/scheduler.cpp
+  scheduler/validation.cpp)
 
 set(SECRET_SRC
   secret/resolver.cpp)

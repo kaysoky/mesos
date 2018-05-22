@@ -43,7 +43,8 @@
 #include "jvm/jvm.hpp"
 
 #include "master/constants.hpp"
-#include "master/validation.hpp"
+
+#include "scheduler/validation.hpp"
 
 #include "convert.hpp"
 #include "construct.hpp"

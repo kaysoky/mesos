@@ -96,6 +96,8 @@
 
 #include "module/manager.hpp"
 
+#include "scheduler/validation.hpp"
+
 #include "watcher/whitelist_watcher.hpp"
 
 using std::list;

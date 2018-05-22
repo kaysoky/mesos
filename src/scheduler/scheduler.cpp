@@ -98,6 +98,7 @@
 #include "module/manager.hpp"
 
 #include "scheduler/flags.hpp"
+#include "scheduler/validation.hpp"
 
 using namespace mesos;
 using namespace mesos::internal;
