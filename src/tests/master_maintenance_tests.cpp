@@ -1957,6 +1957,220 @@ TEST_F(MasterMaintenanceTest, AcceptInvalidInverseOffer)
   driver.join();
 }
 
+
+// Incomplete test for MESOS-7966.
+//
+// Scheduler/User                Master                   Allocator
+// POST Maintenance -->            |                          |
+//        |             ::updateUnavailability -->            |
+// POST Maintenance (blank) -->    |                 ::updateUnavailability
+//        |             ::updateUnavailability -->    <-- ::allocate
+//        |          <-- ::inverseOfferCallback     ::updateUnavailability
+// Call ACCEPT -->                 |                          |
+//                           ::inverseOffer -->               |
+//                                                   ::updateInverseOffer
+//
+// The important part is to enqueue an `::inverseOfferCallback` for the _first_
+// schedule after the _second_ `::updateUnavailability` on the master.
+TEST_F(MasterMaintenanceTest, Experiment)
+{
+  // Set up a master, agent, and framework.
+  master::Flags flags = CreateMasterFlags();
+
+  Try<Owned<cluster::Master>> master = StartMaster(flags);
+  ASSERT_SOME(master);
+
+  Owned<MasterDetector> detector = master.get()->createDetector();
+  Try<Owned<cluster::Slave>> slave = StartSlave(detector.get());
+  ASSERT_SOME(slave);
+
+  // Capture the registration message for agent to make sure it is
+  // running before we continue.
+  Future<SlaveRegisteredMessage> slaveRegisteredMessage =
+    FUTURE_PROTOBUF(SlaveRegisteredMessage(), master.get()->pid, _);
+
+  auto scheduler = std::make_shared<v1::MockHTTPScheduler>();
+
+  Future<Nothing> connected;
+  EXPECT_CALL(*scheduler, connected(_))
+    .WillOnce(FutureSatisfy(&connected))
+    .WillRepeatedly(Return()); // Ignore future invocations.
+
+  v1::scheduler::TestMesos mesos(
+      master.get()->pid,
+      ContentType::PROTOBUF,
+      scheduler);
+
+  AWAIT_READY(connected);
+
+  Future<Event::Subscribed> subscribed;
+  EXPECT_CALL(*scheduler, subscribed(_, _))
+    .WillOnce(FutureArg<1>(&subscribed));
+
+  EXPECT_CALL(*scheduler, heartbeat(_))
+    .WillRepeatedly(Return()); // Ignore heartbeats.
+
+  EXPECT_CALL(*scheduler, offers(_, _))
+    .WillRepeatedly(Return()); // Ignore offers.
+
+  EXPECT_CALL(*scheduler, rescind(_, _))
+    .WillRepeatedly(Return()); // Ignore rescinds.
+
+  Future<Event::InverseOffers> inverseOffers;
+  EXPECT_CALL(*scheduler, inverseOffers(_, _))
+    .WillOnce(FutureArg<1>(&inverseOffers));
+
+  EXPECT_CALL(*scheduler, disconnected(_))
+    .Times(AtMost(1));
+
+  // Wait for the agent to finish registering.
+  AWAIT_READY(slaveRegisteredMessage);
+
+  {
+    Call call;
+    call.set_type(Call::SUBSCRIBE);
+
+    Call::Subscribe* subscribe = call.mutable_subscribe();
+    subscribe->mutable_framework_info()->CopyFrom(v1::DEFAULT_FRAMEWORK_INFO);
+
+    mesos.send(call);
+  }
+
+  AWAIT_READY(subscribed);
+  v1::FrameworkID id(subscribed->framework_id());
+
+  // Figure out the allocator's PID so that we can dispatch to it.
+  // We do this by generating a new PID with the same prefix, and then
+  // decrementing the number used to differentiate.
+  UPID allocatorPID = master.get()->pid;
+  {
+    string generated = process::ID::generate("hierarchical-allocator");
+    vector<string> tokens = strings::tokenize(generated, "()");
+    ASSERT_EQ(2, tokens.size());
+    Try<int> number = numify<int>(tokens[1]);
+    ASSERT_SOME(number);
+
+    allocatorPID.id =
+      "hierarchical-allocator(" + stringify(number.get() - 1) + ")";
+  }
+
+  // We need to block the allocator from progressing, as posting a maintenance
+  // schedule will trigger an allocation cycle once the allocator has finished
+  // processing the schedule. We will unblock this only after we have queued
+  // a second maintenance schedule update on the master.
+  bool blockAllocator = true;
+  process::dispatch(allocatorPID, [&blockAllocator]() {
+    while (blockAllocator) {}
+  });
+
+  // Schedule this agent for maintenance.
+  MachineID machine;
+  machine.set_hostname(maintenanceHostname);
+  machine.set_ip(stringify(slave.get()->pid.address.ip));
+
+  const Time start = Clock::now() + Seconds(60);
+  const Duration duration = Seconds(120);
+  const Unavailability unavailability = createUnavailability(start, duration);
+
+  // Post a valid schedule with one machine.
+  maintenance::Schedule schedule = createSchedule(
+      {createWindow({machine}, unavailability)});
+
+  Future<Response> response = process::http::post(
+      master.get()->pid,
+      "maintenance/schedule",
+      headers,
+      stringify(JSON::protobuf(schedule)));
+
+  // Once this returns, we expect the Master to have finished processing
+  // the schedule and to have at least dispatched an update to the allocator.
+  AWAIT_EXPECT_RESPONSE_STATUS_EQ(OK().status, response);
+
+  // Dispatch a blocking function to the registrar so that the next Operator
+  // API call will block until we are ready. This should leave the API call
+  // in a half-processed state, where it has finished authorization, but
+  // has not yet updated the maintenance state in the master.
+  bool blockRegistrar = true;
+  process::dispatch(master.get()->registrar->pid(), [&blockRegistrar]() {
+    while (blockRegistrar) {}
+  });
+
+  // Immediately delete the schedule.
+  schedule = createSchedule({});
+  response = process::http::post(
+      master.get()->pid,
+      "maintenance/schedule",
+      headers,
+      stringify(JSON::protobuf(schedule)));
+
+  // TODO(josephw): This part doesn't seem to quite work.
+  // We need to ensure the master finishes processing the first part of the
+  // schedule update and dispatches over to the registrar.
+  {
+    Future<Response> foobar = process::http::get(
+      master.get()->pid,
+      "maintenance/schedule",
+      None(),
+      createBasicAuthHeaders(DEFAULT_CREDENTIAL));
+
+    AWAIT_EXPECT_RESPONSE_STATUS_EQ(OK().status, foobar);
+  }
+
+  // Dispatch a blocking function to the master so that we block
+  // `Master::Http::___updateMaintenanceSchedule` from being called.
+  // This allows us to control when the master removes the agent from
+  // maintenance.
+  bool blockMaster = true;
+  process::dispatch(master.get()->pid, [&blockMaster]() {
+    while (blockMaster) {}
+  });
+
+  // Now unblock the registrar so that the latter half of the maintenance
+  // schedule call can be dispatched onto the master. We dispatch another
+  // to the registrar to make sure it has enqueued the expected continuation.
+  blockRegistrar = false;
+  AWAIT_READY(process::dispatch(
+      master.get()->registrar->pid(),
+      []() -> Future<Nothing> { return Nothing(); }));
+
+  // Unblock the allocator too, so that it can begin to process the first
+  // schedule and allocation cycle. A followup dispatch ensures the allocation
+  // cycle finishes before we continue.
+  //
+  // TODO(josephw): Haven't quite ordered this part correctly.
+  blockAllocator = false;
+  AWAIT_READY(process::dispatch(
+      allocatorPID,
+      []() -> Future<Nothing> { return Nothing(); }));
+
+  // Unblocking the master will allow the maintenance schedule to be processed
+  // and the inverse offer to be sent.
+  blockMaster = false;
+
+  AWAIT_EXPECT_RESPONSE_STATUS_EQ(OK().status, response);
+  AWAIT_READY(inverseOffers);
+  EXPECT_EQ(1, inverseOffers->inverse_offers().size());
+
+  {
+    // Accept the inverse offer.
+    Call call;
+    call.mutable_framework_id()->CopyFrom(id);
+    call.set_type(Call::ACCEPT_INVERSE_OFFERS);
+
+    Call::AcceptInverseOffers* accept = call.mutable_accept_inverse_offers();
+    accept->add_inverse_offer_ids()->CopyFrom(
+        inverseOffers->inverse_offers(0).id());
+
+    mesos.send(call);
+  }
+
+  // Hmmm....
+  // Incomplete...
+  Future<Nothing> updateInverseOffer =
+    FUTURE_DISPATCH(_, &MesosAllocatorProcess::updateInverseOffer);
+  AWAIT_READY(updateInverseOffer);
+}
+
 } // namespace tests {
 } // namespace internal {
 } // namespace mesos {
