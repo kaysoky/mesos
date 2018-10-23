@@ -70,6 +70,7 @@
 
 #include "common/http.hpp"
 #include "common/protobuf_utils.hpp"
+#include "common/recordio.hpp"
 #include "common/resources_utils.hpp"
 
 #include "internal/devolve.hpp"
@@ -122,6 +123,7 @@ using std::copy_if;
 using std::list;
 using std::map;
 using std::set;
+using std::shared_ptr;
 using std::string;
 using std::tie;
 using std::tuple;
@@ -140,6 +142,10 @@ using mesos::authorization::VIEW_FLAGS;
 using mesos::authorization::VIEW_FRAMEWORK;
 using mesos::authorization::VIEW_ROLE;
 using mesos::authorization::VIEW_TASK;
+
+using mesos::internal::recordio::Reader;
+
+using ::recordio::Decoder;
 
 namespace mesos {
 namespace internal {
@@ -213,158 +219,279 @@ Future<Response> Master::Http::api(
     return MethodNotAllowed({"POST"}, request.method);
   }
 
-  v1::master::Call v1Call;
-
   // TODO(anand): Content type values are case-insensitive.
-  Option<string> contentType = request.headers.get("Content-Type");
-
-  if (contentType.isNone()) {
+  Option<string> contentType_ = request.headers.get("Content-Type");
+  if (contentType_.isNone()) {
     return BadRequest("Expecting 'Content-Type' to be present");
   }
 
-  if (contentType.get() == APPLICATION_PROTOBUF) {
-    if (!v1Call.ParseFromString(request.body)) {
-      return BadRequest("Failed to parse body into Call protobuf");
-    }
-  } else if (contentType.get() == APPLICATION_JSON) {
-    Try<JSON::Value> value = JSON::parse(request.body);
-
-    if (value.isError()) {
-      return BadRequest("Failed to parse body into JSON: " + value.error());
-    }
-
-    Try<v1::master::Call> parse =
-      ::protobuf::parse<v1::master::Call>(value.get());
-
-    if (parse.isError()) {
-      return BadRequest("Failed to convert JSON into Call protobuf: " +
-                        parse.error());
-    }
-
-    v1Call = parse.get();
+  ContentType contentType;
+  if (contentType_.get() == APPLICATION_JSON) {
+    contentType = ContentType::JSON;
+  } else if (contentType_.get() == APPLICATION_PROTOBUF) {
+    contentType = ContentType::PROTOBUF;
+  } else if (contentType_.get() == APPLICATION_RECORDIO) {
+    contentType = ContentType::RECORDIO;
   } else {
     return UnsupportedMediaType(
         string("Expecting 'Content-Type' of ") +
-        APPLICATION_JSON + " or " + APPLICATION_PROTOBUF);
+        APPLICATION_JSON + " or " + APPLICATION_PROTOBUF +
+        + " or " + APPLICATION_RECORDIO);
   }
 
-  mesos::master::Call call = devolve(v1Call);
+  Option<ContentType> messageContentType;
+  Option<string> messageContentType_ =
+    request.headers.get(MESSAGE_CONTENT_TYPE);
 
-  Option<Error> error = validation::master::call::validate(call);
+  if (streamingMediaType(contentType)) {
+    if (messageContentType_.isNone()) {
+      return BadRequest(
+          "Expecting '" + stringify(MESSAGE_CONTENT_TYPE) + "' to be" +
+          " set for streaming requests");
+    }
 
-  if (error.isSome()) {
-    return BadRequest("Failed to validate master::Call: " + error->message);
+    if (messageContentType_.get() == APPLICATION_JSON) {
+      messageContentType = Option<ContentType>(ContentType::JSON);
+    } else if (messageContentType_.get() == APPLICATION_PROTOBUF) {
+      messageContentType = Option<ContentType>(ContentType::PROTOBUF);
+    } else {
+      return UnsupportedMediaType(
+          string("Expecting '") + MESSAGE_CONTENT_TYPE + "' of " +
+          APPLICATION_JSON + " or " + APPLICATION_PROTOBUF);
+    }
+  } else {
+    // Validate that a client has not set the "Message-Content-Type"
+    // header for a non-streaming request.
+    if (messageContentType_.isSome()) {
+      return UnsupportedMediaType(
+          string("Expecting '") + MESSAGE_CONTENT_TYPE + "' to be not"
+          " set for non-streaming requests");
+    }
   }
 
-  LOG(INFO) << "Processing call " << call.type();
+  // This lambda deserializes a string into a valid `Call`
+  // based on the content type.
+  auto deserializer = [](const string& body, ContentType contentType)
+      -> Try<mesos::master::Call> {
+    Try<v1::master::Call> v1Call =
+      deserialize<v1::master::Call>(contentType, body);
+
+    if (v1Call.isError()) {
+      return Error(v1Call.error());
+    }
+
+    mesos::master::Call call = devolve(v1Call.get());
+
+    Option<Error> error = validation::master::call::validate(call);
+    if (error.isSome()) {
+      return Error("Failed to validate master::Call: " + error->message);
+    }
+
+    return call;
+  };
 
   ContentType acceptType;
   if (request.acceptsMediaType(APPLICATION_JSON)) {
     acceptType = ContentType::JSON;
   } else if (request.acceptsMediaType(APPLICATION_PROTOBUF)) {
     acceptType = ContentType::PROTOBUF;
+  } else if (request.acceptsMediaType(APPLICATION_RECORDIO)) {
+    acceptType = ContentType::RECORDIO;
   } else {
     return NotAcceptable(
         string("Expecting 'Accept' to allow ") +
-        "'" + APPLICATION_PROTOBUF + "' or '" + APPLICATION_JSON + "'");
+        APPLICATION_JSON + " or " + APPLICATION_PROTOBUF + " or " +
+        APPLICATION_RECORDIO);
   }
+
+  Option<ContentType> messageAcceptType;
+  if (streamingMediaType(acceptType)) {
+    // Note that `acceptsMediaType()` returns true if the given headers
+    // field does not exist, i.e. by default we return JSON here.
+    if (request.acceptsMediaType(MESSAGE_ACCEPT, APPLICATION_JSON)) {
+      messageAcceptType = ContentType::JSON;
+    } else if (request.acceptsMediaType(MESSAGE_ACCEPT, APPLICATION_PROTOBUF)) {
+      messageAcceptType = ContentType::PROTOBUF;
+    } else {
+      return NotAcceptable(
+          string("Expecting '") + MESSAGE_ACCEPT + "' to allow " +
+          APPLICATION_JSON + " or " + APPLICATION_PROTOBUF);
+    }
+  } else {
+    // Validate that a client has not set the "Message-Accept"
+    // header for a non-streaming response.
+    if (request.headers.contains(MESSAGE_ACCEPT)) {
+      return NotAcceptable(
+          string("Expecting '") + MESSAGE_ACCEPT +
+          "' to be not set for non-streaming responses");
+    }
+  }
+
+  CHECK_EQ(Request::PIPE, request.type);
+  CHECK_SOME(request.reader);
+
+  RequestMediaTypes mediaTypes {
+      contentType, acceptType, messageContentType, messageAcceptType};
+
+  if (streamingMediaType(contentType)) {
+    CHECK_SOME(mediaTypes.messageContent);
+
+    shared_ptr<Reader<mesos::master::Call>> reader(
+        new Reader<mesos::master::Call>(
+            Decoder<mesos::master::Call>(lambda::bind(
+                deserializer, lambda::_1, mediaTypes.messageContent.get())),
+            request.reader.get()));
+
+    return reader->read()
+      .then(defer(
+          master->self(),
+          [=](const Result<mesos::master::Call>& call) -> Future<Response> {
+            if (call.isNone()) {
+              return BadRequest("Received EOF while reading request body");
+            }
+
+            if (call.isError()) {
+              return BadRequest(call.error());
+            }
+
+            return _api(call.get(), reader, mediaTypes, principal);
+          }));
+  } else {
+    Pipe::Reader reader = request.reader.get();  // Remove const.
+
+    return reader.readAll()
+      .then(defer(
+          master->self(),
+          [=](const string& body) -> Future<Response> {
+            Try<mesos::master::Call> call = deserializer(body, contentType);
+            if (call.isError()) {
+              return BadRequest(call.error());
+            }
+            return _api(call.get(), None(), mediaTypes, principal);
+          }));
+  }
+}
+
+
+Future<Response> Master::Http::_api(
+    const mesos::master::Call& call,
+    Option<shared_ptr<Reader<mesos::master::Call>>> reader,
+    const RequestMediaTypes& mediaTypes,
+    const Option<Principal>& principal) const
+{
+  // Validate that a client has not _accidentally_ sent us a
+  // streaming request for a call type that does not support it.
+  if (streamingMediaType(mediaTypes.content) &&
+      call.type() != mesos::master::Call::SUBSCRIBE) {
+    return UnsupportedMediaType(
+        "Streaming 'Content-Type' " + stringify(mediaTypes.content) + " is "
+        "not supported for " + stringify(call.type()) + " call");
+  }
+
+  if (streamingMediaType(mediaTypes.accept) &&
+      call.type() != mesos::master::Call::SUBSCRIBE) {
+    return NotAcceptable("Streaming response is not supported for " +
+        stringify(call.type()) + " call");
+  }
+
+  LOG(INFO) << "Processing call " << call.type();
 
   switch (call.type()) {
     case mesos::master::Call::UNKNOWN:
       return NotImplemented();
 
     case mesos::master::Call::GET_HEALTH:
-      return getHealth(call, principal, acceptType);
+      return getHealth(call, principal, mediaTypes.accept);
 
     case mesos::master::Call::GET_FLAGS:
-      return getFlags(call, principal, acceptType);
+      return getFlags(call, principal, mediaTypes.accept);
 
     case mesos::master::Call::GET_VERSION:
-      return getVersion(call, principal, acceptType);
+      return getVersion(call, principal, mediaTypes.accept);
 
     case mesos::master::Call::GET_METRICS:
-      return getMetrics(call, principal, acceptType);
+      return getMetrics(call, principal, mediaTypes.accept);
 
     case mesos::master::Call::GET_LOGGING_LEVEL:
-      return getLoggingLevel(call, principal, acceptType);
+      return getLoggingLevel(call, principal, mediaTypes.accept);
 
     case mesos::master::Call::SET_LOGGING_LEVEL:
-      return setLoggingLevel(call, principal, acceptType);
+      return setLoggingLevel(call, principal, mediaTypes.accept);
 
     case mesos::master::Call::LIST_FILES:
-      return listFiles(call, principal, acceptType);
+      return listFiles(call, principal, mediaTypes.accept);
 
     case mesos::master::Call::READ_FILE:
-      return readFile(call, principal, acceptType);
+      return readFile(call, principal, mediaTypes.accept);
 
     case mesos::master::Call::GET_STATE:
-      return getState(call, principal, acceptType);
+      return getState(call, principal, mediaTypes.accept);
 
     case mesos::master::Call::GET_AGENTS:
-      return getAgents(call, principal, acceptType);
+      return getAgents(call, principal, mediaTypes.accept);
 
     case mesos::master::Call::GET_FRAMEWORKS:
-      return getFrameworks(call, principal, acceptType);
+      return getFrameworks(call, principal, mediaTypes.accept);
 
     case mesos::master::Call::GET_EXECUTORS:
-      return getExecutors(call, principal, acceptType);
+      return getExecutors(call, principal, mediaTypes.accept);
 
     case mesos::master::Call::GET_OPERATIONS:
-      return getOperations(call, principal, acceptType);
+      return getOperations(call, principal, mediaTypes.accept);
 
     case mesos::master::Call::GET_TASKS:
-      return getTasks(call, principal, acceptType);
+      return getTasks(call, principal, mediaTypes.accept);
 
     case mesos::master::Call::GET_ROLES:
-      return getRoles(call, principal, acceptType);
+      return getRoles(call, principal, mediaTypes.accept);
 
     case mesos::master::Call::GET_WEIGHTS:
-      return weightsHandler.get(call, principal, acceptType);
+      return weightsHandler.get(call, principal, mediaTypes.accept);
 
     case mesos::master::Call::UPDATE_WEIGHTS:
-      return weightsHandler.update(call, principal, acceptType);
+      return weightsHandler.update(call, principal, mediaTypes.accept);
 
     case mesos::master::Call::GET_MASTER:
-      return getMaster(call, principal, acceptType);
+      return getMaster(call, principal, mediaTypes.accept);
 
     case mesos::master::Call::SUBSCRIBE:
-      return subscribe(call, principal, acceptType);
+      return subscribe(call, principal, mediaTypes.accept);
 
     case mesos::master::Call::RESERVE_RESOURCES:
-      return reserveResources(call, principal, acceptType);
+      return reserveResources(call, principal, mediaTypes.accept);
 
     case mesos::master::Call::UNRESERVE_RESOURCES:
-      return unreserveResources(call, principal, acceptType);
+      return unreserveResources(call, principal, mediaTypes.accept);
 
     case mesos::master::Call::CREATE_VOLUMES:
-      return createVolumes(call, principal, acceptType);
+      return createVolumes(call, principal, mediaTypes.accept);
 
     case mesos::master::Call::DESTROY_VOLUMES:
-      return destroyVolumes(call, principal, acceptType);
+      return destroyVolumes(call, principal, mediaTypes.accept);
 
     case mesos::master::Call::GROW_VOLUME:
-      return growVolume(call, principal, acceptType);
+      return growVolume(call, principal, mediaTypes.accept);
 
     case mesos::master::Call::SHRINK_VOLUME:
-      return shrinkVolume(call, principal, acceptType);
+      return shrinkVolume(call, principal, mediaTypes.accept);
 
     case mesos::master::Call::GET_MAINTENANCE_STATUS:
-      return getMaintenanceStatus(call, principal, acceptType);
+      return getMaintenanceStatus(call, principal, mediaTypes.accept);
 
     case mesos::master::Call::GET_MAINTENANCE_SCHEDULE:
-      return getMaintenanceSchedule(call, principal, acceptType);
+      return getMaintenanceSchedule(call, principal, mediaTypes.accept);
 
     case mesos::master::Call::UPDATE_MAINTENANCE_SCHEDULE:
-      return updateMaintenanceSchedule(call, principal, acceptType);
+      return updateMaintenanceSchedule(call, principal, mediaTypes.accept);
 
     case mesos::master::Call::START_MAINTENANCE:
-      return startMaintenance(call, principal, acceptType);
+      return startMaintenance(call, principal, mediaTypes.accept);
 
     case mesos::master::Call::STOP_MAINTENANCE:
-      return stopMaintenance(call, principal, acceptType);
+      return stopMaintenance(call, principal, mediaTypes.accept);
 
     case mesos::master::Call::GET_QUOTA:
-      return quotaHandler.status(call, principal, acceptType);
+      return quotaHandler.status(call, principal, mediaTypes.accept);
 
     case mesos::master::Call::UPDATE_QUOTA:
       return NotImplemented();
@@ -380,10 +507,10 @@ Future<Response> Master::Http::api(
       return quotaHandler.remove(call, principal);
 
     case mesos::master::Call::TEARDOWN:
-      return teardown(call, principal, acceptType);
+      return teardown(call, principal, mediaTypes.accept);
 
     case mesos::master::Call::MARK_AGENT_GONE:
-      return markAgentGone(call, principal, acceptType);
+      return markAgentGone(call, principal, mediaTypes.accept);
   }
 
   UNREACHABLE();

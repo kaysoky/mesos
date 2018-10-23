@@ -874,7 +874,9 @@ void Master::initialize()
       &Master::authenticate,
       &AuthenticateMessage::pid);
 
-  // Setup HTTP routes.
+  // Setup the '/api/v1' handler for streaming requests.
+  RouteOptions streamingOptions;
+  streamingOptions.requestStreaming = true;
   route("/api/v1",
         // TODO(benh): Is this authentication realm sufficient or do
         // we need some kind of hybrid if we expect both schedulers
@@ -885,7 +887,10 @@ void Master::initialize()
                const Option<Principal>& principal) {
           logRequest(request);
           return http.api(request, principal);
-        });
+        },
+        streamingOptions);
+
+  // Setup HTTP routes.
   route("/api/v1/scheduler",
         DEFAULT_HTTP_FRAMEWORK_AUTHENTICATION_REALM,
         Http::SCHEDULER_HELP(),

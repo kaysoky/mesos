@@ -67,6 +67,7 @@
 #include <stout/uuid.hpp>
 
 #include "common/http.hpp"
+#include "common/recordio.hpp"
 #include "common/resources_utils.hpp"
 
 #include "files/files.hpp"
@@ -1610,6 +1611,13 @@ private:
     JSON::Object __flags() const;
 
     class FlagsError; // Forward declaration.
+
+    process::Future<process::http::Response> _api(
+        const mesos::master::Call& call,
+        Option<std::shared_ptr<recordio::Reader<mesos::master::Call>>> reader,
+        const RequestMediaTypes& mediaTypes,
+        const Option<process::http::authentication::Principal>& principal)
+      const;
 
     process::Future<Try<JSON::Object, FlagsError>> _flags(
         const Option<process::http::authentication::Principal>&
