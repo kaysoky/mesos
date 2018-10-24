@@ -50,6 +50,7 @@
 #include <process/http.hpp>
 #include <process/id.hpp>
 #include <process/limiter.hpp>
+#include <process/loop.hpp>
 #include <process/owned.hpp>
 #include <process/run.hpp>
 #include <process/shared.hpp>
@@ -109,7 +110,10 @@ using std::vector;
 
 using process::await;
 using process::wait; // Necessary on some OS's to disambiguate.
+using process::Break;
 using process::Clock;
+using process::Continue;
+using process::ControlFlow;
 using process::ExitedEvent;
 using process::Failure;
 using process::Future;
@@ -11983,10 +11987,12 @@ void Master::Subscribers::send(
 
 
 Master::Subscribers::Subscriber::Subscriber(
+    Master* _master,
     const HttpConnection& _http,
     Option<shared_ptr<Reader<mesos::master::Call>>> _reader,
     const Option<Principal> _principal)
-  : http(_http),
+  : master(_master),
+    http(_http),
     reader(_reader),
     principal(_principal)
 {
@@ -12003,6 +12009,46 @@ Master::Subscribers::Subscriber::Subscriber(
             DEFAULT_HEARTBEAT_INTERVAL));
 
   process::spawn(heartbeater.get());
+
+  // When the incoming request is a streaming request, the `reader` will
+  // be set and we expect to get heartbeats over this handle.
+  if (reader.isSome()) {
+    process::loop(
+        master->self(),
+        [this]() {
+          // TODO(josephw): The heartbeat interval is currently
+          // hardcoded to expect a heartbeat at least once every 30 seconds.
+          // This should be configurable by the requester.
+          return reader.get()->read()
+            .after(
+                DEFAULT_HEARTBEAT_INTERVAL * 2,
+                [this](Future<Result<mesos::master::Call>> future) {
+                  future.discard();
+
+                  return Failure(
+                      "Subscriber " + stringify(http.streamId) + " has "
+                      "timed out due to lack of heartbeats");
+                });
+        },
+        [this](const Result<mesos::master::Call>& heartbeat)
+          -> ControlFlow<Nothing> {
+            // If there is an error while decoding or the incoming stream
+            // has closed, we treat this as if the heartbeats have stopped.
+            if (heartbeat.isError() || heartbeat.isNone()) {
+              return Break();
+            }
+
+            // Besides reading and parsing the incoming message, we do
+            // not examine the contents, because a blank object is
+            // sufficient as a heartbeat.
+            return Continue();
+        })
+      .onAny(defer(master->self(), [this](const Future<Nothing>& future) {
+        // Reaching this lambda means the heartbeats have stopped.
+        // Close the outgoing connection to trigger cleanup.
+        http.close();
+      }));
+  }
 }
 
 
@@ -12160,7 +12206,7 @@ void Master::subscribe(
   subscribers.subscribed.put(
       http.streamId,
       Owned<Subscribers::Subscriber>(
-          new Subscribers::Subscriber{http, reader, principal}));
+          new Subscribers::Subscriber{this, http, reader, principal}));
 }
 
 

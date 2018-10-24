@@ -2170,6 +2170,7 @@ private:
     struct Subscriber
     {
       Subscriber(
+          Master* _master,
           const HttpConnection& _http,
           Option<std::shared_ptr<recordio::Reader<mesos::master::Call>>>
             _reader,
@@ -2198,6 +2199,8 @@ private:
         terminate(heartbeater.get());
         wait(heartbeater.get());
       }
+
+      Master* master;
 
       HttpConnection http;
       Option<std::shared_ptr<recordio::Reader<mesos::master::Call>>> reader;
