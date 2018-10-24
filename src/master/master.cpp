@@ -11982,6 +11982,30 @@ void Master::Subscribers::send(
 }
 
 
+Master::Subscribers::Subscriber::Subscriber(
+    const HttpConnection& _http,
+    Option<shared_ptr<Reader<mesos::master::Call>>> _reader,
+    const Option<Principal> _principal)
+  : http(_http),
+    reader(_reader),
+    principal(_principal)
+{
+  mesos::master::Event event;
+  event.set_type(mesos::master::Event::HEARTBEAT);
+
+  heartbeater =
+    process::Owned<Heartbeater<mesos::master::Event, v1::master::Event>>(
+        new Heartbeater<mesos::master::Event, v1::master::Event>(
+            "subscriber " + stringify(http.streamId),
+            event,
+            http,
+            DEFAULT_HEARTBEAT_INTERVAL,
+            DEFAULT_HEARTBEAT_INTERVAL));
+
+  process::spawn(heartbeater.get());
+}
+
+
 void Master::Subscribers::Subscriber::send(
     const Shared<mesos::master::Event>& event,
     const Owned<ObjectApprovers>& approvers,

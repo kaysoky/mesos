@@ -2173,25 +2173,7 @@ private:
           const HttpConnection& _http,
           Option<std::shared_ptr<recordio::Reader<mesos::master::Call>>>
             _reader,
-          const Option<process::http::authentication::Principal> _principal)
-        : http(_http),
-          reader(_reader),
-          principal(_principal)
-      {
-        mesos::master::Event event;
-        event.set_type(mesos::master::Event::HEARTBEAT);
-
-        heartbeater =
-          process::Owned<Heartbeater<mesos::master::Event, v1::master::Event>>(
-              new Heartbeater<mesos::master::Event, v1::master::Event>(
-                  "subscriber " + stringify(http.streamId),
-                  event,
-                  http,
-                  DEFAULT_HEARTBEAT_INTERVAL,
-                  DEFAULT_HEARTBEAT_INTERVAL));
-
-        process::spawn(heartbeater.get());
-      }
+          const Option<process::http::authentication::Principal> _principal);
 
       // Not copyable, not assignable.
       Subscriber(const Subscriber&) = delete;
