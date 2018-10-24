@@ -1097,6 +1097,7 @@ private:
   // Subscribes a client to the 'api/vX' endpoint.
   void subscribe(
       const HttpConnection& http,
+      Option<std::shared_ptr<recordio::Reader<mesos::master::Call>>> reader,
       const Option<process::http::authentication::Principal>& principal);
 
   void teardown(Framework* framework);
@@ -1862,6 +1863,7 @@ private:
 
     process::Future<process::http::Response> subscribe(
         const mesos::master::Call& call,
+        Option<std::shared_ptr<recordio::Reader<mesos::master::Call>>> reader,
         const Option<process::http::authentication::Principal>& principal,
         ContentType contentType) const;
 
@@ -2169,8 +2171,11 @@ private:
     {
       Subscriber(
           const HttpConnection& _http,
+          Option<std::shared_ptr<recordio::Reader<mesos::master::Call>>>
+            _reader,
           const Option<process::http::authentication::Principal> _principal)
         : http(_http),
+          reader(_reader),
           principal(_principal)
       {
         mesos::master::Event event;
@@ -2213,6 +2218,7 @@ private:
       }
 
       HttpConnection http;
+      Option<std::shared_ptr<recordio::Reader<mesos::master::Call>>> reader;
       process::Owned<Heartbeater<mesos::master::Event, v1::master::Event>>
         heartbeater;
       const Option<process::http::authentication::Principal> principal;

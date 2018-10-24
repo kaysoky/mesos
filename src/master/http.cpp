@@ -455,7 +455,7 @@ Future<Response> Master::Http::_api(
       return getMaster(call, principal, mediaTypes.accept);
 
     case mesos::master::Call::SUBSCRIBE:
-      return subscribe(call, principal, mediaTypes.accept);
+      return subscribe(call, reader, principal, mediaTypes.accept);
 
     case mesos::master::Call::RESERVE_RESOURCES:
       return reserveResources(call, principal, mediaTypes.accept);
@@ -519,6 +519,7 @@ Future<Response> Master::Http::_api(
 
 Future<Response> Master::Http::subscribe(
     const mesos::master::Call& call,
+    Option<shared_ptr<Reader<mesos::master::Call>>> reader,
     const Option<Principal>& principal,
     ContentType contentType) const
 {
@@ -556,7 +557,7 @@ Future<Response> Master::Http::subscribe(
 
           // Master::subscribe will start the heartbeater process, which should
           // only happen after `SUBSCRIBED` event is sent.
-          master->subscribe(http, principal);
+          master->subscribe(http, reader, principal);
 
           return ok;
         }));

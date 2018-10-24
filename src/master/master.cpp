@@ -144,6 +144,8 @@ using mesos::authorization::VIEW_FRAMEWORK;
 using mesos::authorization::VIEW_TASK;
 using mesos::authorization::VIEW_EXECUTOR;
 
+using mesos::internal::recordio::Reader;
+
 using mesos::master::contender::MasterContender;
 
 using mesos::master::detector::MasterDetector;
@@ -12119,6 +12121,7 @@ void Master::exited(const id::UUID& id)
 
 void Master::subscribe(
     const HttpConnection& http,
+    Option<shared_ptr<Reader<mesos::master::Call>>> reader,
     const Option<Principal>& principal)
 {
   LOG(INFO) << "Added subscriber " << http.streamId
@@ -12133,7 +12136,7 @@ void Master::subscribe(
   subscribers.subscribed.put(
       http.streamId,
       Owned<Subscribers::Subscriber>(
-          new Subscribers::Subscriber{http, principal}));
+          new Subscribers::Subscriber{http, reader, principal}));
 }
 
 
