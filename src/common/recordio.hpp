@@ -71,6 +71,10 @@ public:
         new internal::ReaderProcess<T>(std::move(decoder), reader),
         true)) {}
 
+  // Not copyable, not assignable.
+  Reader(const Reader& that) = delete;
+  Reader& operator=(const Reader&) = delete;
+
   virtual ~Reader()
   {
     // Note that we pass 'false' here to avoid injecting the
