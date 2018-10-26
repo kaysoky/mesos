@@ -3515,6 +3515,253 @@ TEST_P(MasterAPITest, Heartbeat)
 }
 
 
+// Verifies that subscribers to the master event stream can use
+// a streaming request to send heartbeats over the same connection.
+TEST_P(MasterAPITest, StreamingSubscriberHeartbeats)
+{
+  ContentType contentType = GetParam();
+
+  Try<Owned<cluster::Master>> master = this->StartMaster();
+  ASSERT_SOME(master);
+
+  // Initialize the pipe for streaming the heartbeats from client to master.
+  http::Pipe pipe;
+  http::Pipe::Writer writer = pipe.writer();
+
+  ::recordio::Encoder<v1::master::Call> encoder(lambda::bind(
+      serialize, GetParam(), lambda::_1));
+
+  // Push the first Call to the pipe. This is the only non-heartbeat.
+  {
+    v1::master::Call v1Call;
+    v1Call.set_type(v1::master::Call::SUBSCRIBE);
+
+    writer.write(encoder.encode(v1Call));
+  }
+
+  // Start streaming to and from the master.
+  http::URL endpoint = http::URL(
+      "http",
+      master.get()->pid.address.ip,
+      master.get()->pid.address.port,
+      master.get()->pid.id + "/api/v1");
+
+  Future<http::Response> response;
+  Future<http::Connection> _connection = http::connect(endpoint);
+  AWAIT_READY(_connection);
+
+  http::Connection connection = _connection.get(); // Remove const.
+
+  {
+    http::Headers headers = createBasicAuthHeaders(DEFAULT_CREDENTIAL);
+    headers["Accept"] = stringify(ContentType::RECORDIO);
+    headers["Content-Type"] = stringify(ContentType::RECORDIO);
+    headers[MESSAGE_CONTENT_TYPE] = stringify(GetParam());
+    headers[MESSAGE_ACCEPT] = stringify(GetParam());
+
+    http::Request request;
+    request.url = endpoint;
+    request.method = "POST";
+    request.type = http::Request::PIPE;
+    request.reader = pipe.reader();
+    request.headers = headers;
+
+    response = connection.send(request, true);
+  }
+
+  // Wait for the SUBSCRIBED event, before starting heartbeats.
+  AWAIT_EXPECT_RESPONSE_STATUS_EQ(http::OK().status, response);
+  AWAIT_EXPECT_RESPONSE_HEADER_EQ("chunked", "Transfer-Encoding", response);
+  ASSERT_EQ(http::Response::PIPE, response->type);
+  ASSERT_SOME(response->reader);
+
+  http::Pipe::Reader reader = response->reader.get();
+
+  auto deserializer =
+    lambda::bind(deserialize<v1::master::Event>, contentType, lambda::_1);
+
+  Reader<v1::master::Event> decoder(
+      Decoder<v1::master::Event>(deserializer), reader);
+
+  Future<Result<v1::master::Event>> event = decoder.read();
+  AWAIT_READY(event);
+  EXPECT_EQ(v1::master::Event::SUBSCRIBED, event->get().type());
+
+  event = decoder.read();
+  AWAIT_READY(event);
+  EXPECT_EQ(v1::master::Event::HEARTBEAT, event->get().type());
+
+  event = decoder.read();
+  EXPECT_TRUE(event.isPending());
+
+  // Pause the clock so we can send heartbeats within deterministic periods.
+  Clock::pause();
+
+  // Send the first (client-side) heartbeat within the expected interval.
+  Clock::advance(DEFAULT_HEARTBEAT_INTERVAL);
+  Clock::settle();
+  {
+    // TODO(josephw): There is no explicit type or call defined for heartbeats.
+    // As long as the object is parsable, the heartbeat listener will interpret
+    // the object as a heartbeat.
+    v1::master::Call v1Call;
+    v1Call.set_type(v1::master::Call::UNKNOWN);
+
+    writer.write(encoder.encode(v1Call));
+
+    // Send a separate call to the master for synchronization purposes.
+    // By the time this completes, we can be reasonably certain that the
+    // heartbeat message has also made it through.
+    AWAIT_READY(http::get(master.get()->pid, "/health"));
+  }
+
+  AWAIT_READY(event);
+  EXPECT_EQ(v1::master::Event::HEARTBEAT, event->get().type());
+
+  // We should stay connected within up to 2x the heartbeat interval.
+  Clock::advance(DEFAULT_HEARTBEAT_INTERVAL);
+  Clock::settle();
+  EXPECT_TRUE(connection.disconnected().isPending());
+
+  event = decoder.read();
+  AWAIT_READY(event);
+  EXPECT_EQ(v1::master::Event::HEARTBEAT, event->get().type());
+
+  // Pass the heartbeat period by 0.1 intervals and expect to get disconnected.
+  Clock::advance(DEFAULT_HEARTBEAT_INTERVAL * 1.1);
+  Clock::settle();
+  AWAIT_EXPECT_READY(connection.disconnected());
+
+  Clock::resume();
+  writer.close();
+}
+
+
+// Verifies that sending erroneous data as a heartbeat to a master event
+// stream subscription will cause the master to close the stream.
+TEST_P(MasterAPITest, StreamingSubscriberHeartbeatsClose)
+{
+  ContentType contentType = GetParam();
+
+  Try<Owned<cluster::Master>> master = this->StartMaster();
+  ASSERT_SOME(master);
+
+  // Initialize the pipe for streaming the heartbeats from client to master.
+  http::Pipe pipe;
+  http::Pipe::Writer writer = pipe.writer();
+
+  ::recordio::Encoder<v1::master::Call> encoder(lambda::bind(
+      serialize, GetParam(), lambda::_1));
+
+  // Push the first Call to the pipe. This is the only non-heartbeat.
+  {
+    v1::master::Call v1Call;
+    v1Call.set_type(v1::master::Call::SUBSCRIBE);
+
+    writer.write(encoder.encode(v1Call));
+  }
+
+  // Start streaming to and from the master.
+  http::URL endpoint = http::URL(
+      "http",
+      master.get()->pid.address.ip,
+      master.get()->pid.address.port,
+      master.get()->pid.id + "/api/v1");
+
+  Future<http::Response> response;
+  Future<http::Connection> _connection = http::connect(endpoint);
+  AWAIT_READY(_connection);
+
+  http::Connection connection = _connection.get(); // Remove const.
+
+  {
+    http::Headers headers = createBasicAuthHeaders(DEFAULT_CREDENTIAL);
+    headers["Accept"] = stringify(ContentType::RECORDIO);
+    headers["Content-Type"] = stringify(ContentType::RECORDIO);
+    headers[MESSAGE_CONTENT_TYPE] = stringify(GetParam());
+    headers[MESSAGE_ACCEPT] = stringify(GetParam());
+
+    http::Request request;
+    request.url = endpoint;
+    request.method = "POST";
+    request.type = http::Request::PIPE;
+    request.reader = pipe.reader();
+    request.headers = headers;
+
+    response = connection.send(request, true);
+  }
+
+  // Wait for the SUBSCRIBED event, before starting heartbeats.
+  AWAIT_EXPECT_RESPONSE_STATUS_EQ(http::OK().status, response);
+  AWAIT_EXPECT_RESPONSE_HEADER_EQ("chunked", "Transfer-Encoding", response);
+  ASSERT_EQ(http::Response::PIPE, response->type);
+  ASSERT_SOME(response->reader);
+
+  http::Pipe::Reader reader = response->reader.get();
+
+  auto deserializer =
+    lambda::bind(deserialize<v1::master::Event>, contentType, lambda::_1);
+
+  Reader<v1::master::Event> decoder(
+      Decoder<v1::master::Event>(deserializer), reader);
+
+  Future<Result<v1::master::Event>> event = decoder.read();
+  AWAIT_READY(event);
+  EXPECT_EQ(v1::master::Event::SUBSCRIBED, event->get().type());
+
+  event = decoder.read();
+  AWAIT_READY(event);
+  EXPECT_EQ(v1::master::Event::HEARTBEAT, event->get().type());
+
+  event = decoder.read();
+  EXPECT_TRUE(event.isPending());
+
+  // Pause the clock so we can send heartbeats within deterministic periods.
+  Clock::pause();
+
+  // Send the first (client-side) heartbeat within the expected interval.
+  Clock::advance(DEFAULT_HEARTBEAT_INTERVAL);
+  Clock::settle();
+  {
+    // TODO(josephw): There is no explicit type or call defined for heartbeats.
+    // As long as the object is parsable, the heartbeat listener will interpret
+    // the object as a heartbeat.
+    v1::master::Call v1Call;
+    v1Call.set_type(v1::master::Call::UNKNOWN);
+
+    writer.write(encoder.encode(v1Call));
+
+    // Send a separate call to the master for synchronization purposes.
+    // By the time this completes, we can be reasonably certain that the
+    // heartbeat message has also made it through.
+    AWAIT_READY(http::get(master.get()->pid, "/health"));
+  }
+
+  AWAIT_READY(event);
+  EXPECT_EQ(v1::master::Event::HEARTBEAT, event->get().type());
+
+  // The first heartbeat should be valid, this heartbeat should be invalid.
+  Clock::advance(DEFAULT_HEARTBEAT_INTERVAL);
+  Clock::settle();
+  EXPECT_TRUE(connection.disconnected().isPending());
+  {
+    writer.write("46\nI'm not parsable as a JSON/Protobuf message :P");
+
+    // Again, send a separate call for synchronization purposes.
+    AWAIT_READY(http::get(master.get()->pid, "/health"));
+  }
+
+  event = decoder.read();
+  AWAIT_READY(event);
+  EXPECT_EQ(v1::master::Event::HEARTBEAT, event->get().type());
+
+  AWAIT_EXPECT_READY(connection.disconnected());
+
+  Clock::resume();
+  writer.close();
+}
+
+
 // This test verifies if we can retrieve the current quota status through
 // `GET_QUOTA` call, after we set quota resources through `SET_QUOTA` call.
 TEST_P(MasterAPITest, GetQuota)
