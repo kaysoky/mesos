@@ -258,6 +258,11 @@ if (LINUX)
 endif ()
 
 
+set(MESOS_TESTS_SRC
+  ${MESOS_TESTS_UTILS_SRC}
+  api_tests.cpp)
+
+
 # THE TEST AND HELPER EXECUTABLES.
 ##################################
 add_library(mesos-tests-interface INTERFACE)
