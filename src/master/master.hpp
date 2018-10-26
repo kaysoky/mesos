@@ -1865,7 +1865,7 @@ private:
         const mesos::master::Call& call,
         Option<std::shared_ptr<recordio::Reader<mesos::master::Call>>> reader,
         const Option<process::http::authentication::Principal>& principal,
-        ContentType contentType) const;
+        RequestMediaTypes mediaTypes) const;
 
     process::Future<process::http::Response> readFile(
         const mesos::master::Call& call,

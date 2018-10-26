@@ -455,7 +455,7 @@ Future<Response> Master::Http::_api(
       return getMaster(call, principal, mediaTypes.accept);
 
     case mesos::master::Call::SUBSCRIBE:
-      return subscribe(call, reader, principal, mediaTypes.accept);
+      return subscribe(call, reader, principal, mediaTypes);
 
     case mesos::master::Call::RESERVE_RESOURCES:
       return reserveResources(call, principal, mediaTypes.accept);
@@ -521,7 +521,7 @@ Future<Response> Master::Http::subscribe(
     const mesos::master::Call& call,
     Option<shared_ptr<Reader<mesos::master::Call>>> reader,
     const Option<Principal>& principal,
-    ContentType contentType) const
+    RequestMediaTypes mediaTypes) const
 {
   CHECK_EQ(mesos::master::Call::SUBSCRIBE, call.type());
 
@@ -534,6 +534,15 @@ Future<Response> Master::Http::subscribe(
         [=](const Owned<ObjectApprovers>& approvers) -> Future<Response> {
           Pipe pipe;
           OK ok;
+
+          // For backwards compatibility, the client can omit the
+          // 'Message-Accept' header in favor of the 'Accept' header
+          // when using this endpoint, even though the response type
+          // will always be RecordIO serialization of JSON or protobuf.
+          ContentType contentType = mediaTypes.accept;
+          if (streamingMediaType(mediaTypes.accept)) {
+            contentType = mediaTypes.messageAccept.get();
+          }
 
           ok.headers["Content-Type"] = stringify(contentType);
           ok.type = Response::PIPE;
