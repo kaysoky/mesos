@@ -14,13 +14,19 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# THE LAUNCHER EXECUTOR AND FETCHER EXECUTABLES.
-################################################
+# THE EXECUTOR EXECUTABLES.
+###########################
 add_executable(mesos-default-executor default_executor.cpp)
-target_link_libraries(mesos-default-executor PRIVATE mesos)
+target_link_libraries(mesos-default-executor PRIVATE mesos-libexecutor)
 
 add_executable(mesos-executor executor.cpp)
-target_link_libraries(mesos-executor PRIVATE mesos)
+target_link_libraries(mesos-executor PRIVATE mesos-libexecutor)
 
+# This executor requires this binary to launch tasks.
+add_dependencies(mesos-executor mesos-containerizer)
+
+
+# THE FETCHER EXECUTABLE.
+#########################
 add_executable(mesos-fetcher fetcher.cpp)
 target_link_libraries(mesos-fetcher PRIVATE mesos)

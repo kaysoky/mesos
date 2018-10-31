@@ -17,4 +17,8 @@
 # THE DOCKER EXECUTOR EXECUTABLE.
 #################################
 add_executable(mesos-docker-executor executor.cpp)
-target_link_libraries(mesos-docker-executor PRIVATE mesos)
+
+target_link_libraries(
+  mesos-docker-executor PRIVATE
+  mesos-docker
+  mesos-libexecutor)

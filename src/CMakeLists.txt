@@ -266,9 +266,61 @@ if (LINUX)
 endif ()
 
 
+# MESOS EXECUTOR LIBRARY.
+#########################
+set(EXECUTOR_SRC
+  checks/checker.cpp
+  checks/checker_process.cpp
+  checks/health_checker.cpp
+
+  exec/exec.cpp
+  executor/executor.cpp
+  executor/v0_v1executor.cpp
+
+  # NOTE: This intentionally appears twice (see `AGENT_SRC`), as it contains
+  # a small helper method used in both Agent and Executor.
+  slave/validation.cpp)
+
+# NOTE: Not to be confused with the "mesos-executor" binary,
+# which links to this library.
+add_library(mesos-libexecutor ${EXECUTOR_SRC})
+
+target_link_libraries(
+  mesos-libexecutor PUBLIC
+  mesos-common
+  $<$<PLATFORM_ID:Linux>:mesos-linux>)
+
+
+# MESOS DOCKER LIBRARY.
+#######################
+set(DOCKER_SRC
+  docker/docker.cpp)
+
+add_library(mesos-docker ${DOCKER_SRC})
+
+target_link_libraries(
+  mesos-docker PUBLIC
+  mesos-common
+  $<$<PLATFORM_ID:Linux>:mesos-linux>)
+
+
+# MESOS RLIMIT HELPER LIBRARY.
+##############################
+set(RLIMIT_SRC
+  posix/rlimits.cpp)
+
+add_library(mesos-rlimit ${RLIMIT_SRC})
+
+target_link_libraries(
+  mesos-rlimit PUBLIC
+  stout
+  mesos-protobufs)
+
+
 # SOURCE FILES FOR THE MESOS LIBRARY.
 #####################################
 set(AGENT_SRC
+  docker/spec.cpp
   slave/compatibility.cpp
   slave/constants.cpp
   slave/container_daemon.cpp
@@ -292,9 +344,7 @@ set(AGENT_SRC
   slave/containerizer/fetcher.cpp
   slave/containerizer/mesos/containerizer.cpp
   slave/containerizer/mesos/isolator.cpp
-  slave/containerizer/mesos/launch.cpp
   slave/containerizer/mesos/launcher.cpp
-  slave/containerizer/mesos/mount.cpp
   slave/containerizer/mesos/paths.cpp
   slave/containerizer/mesos/io/switchboard.cpp
   slave/containerizer/mesos/provisioner/backend.cpp
@@ -348,22 +398,8 @@ set(CSI_SRC
   csi/rpc.cpp
   csi/utils.cpp)
 
-set(DOCKER_SRC
-  docker/docker.cpp
-  docker/spec.cpp)
-
-set(EXECUTOR_SRC
-  exec/exec.cpp
-  executor/executor.cpp
-  executor/v0_v1executor.cpp)
-
 set(FILES_SRC
   files/files.cpp)
-
-set(HEALTH_CHECK_SRC
-  checks/checker.cpp
-  checks/checker_process.cpp
-  checks/health_checker.cpp)
 
 set(LINUX_SRC
   containerizer/mesos/cni_setup.cpp
@@ -484,9 +520,6 @@ set(MASTER_SRC
 set(OCI_SRC
   oci/spec.cpp)
 
-set(POSIX_SRC
-  posix/rlimits.cpp)
-
 set(RESOURCE_PROVIDER_SRC
   resource_provider/daemon.cpp
   resource_provider/detector.cpp
@@ -551,10 +584,7 @@ set(MESOS_SRC
   ${APPC_SRC}
   ${AUTHORIZER_SRC}
   ${CSI_SRC}
-  ${DOCKER_SRC}
-  ${EXECUTOR_SRC}
   ${FILES_SRC}
-  ${HEALTH_CHECK_SRC}
   ${LOCAL_SRC}
   ${MASTER_SRC}
   ${OCI_SRC}
@@ -632,7 +662,9 @@ target_link_libraries(
   # libraries. Downstream targets like tests still expect all sources to be
   # globbed together into one library.
   mesos-detector
+  mesos-docker
   mesos-hdfs
+  mesos-libexecutor
   mesos-protobufs
   mesos-scheduler
   $<$<PLATFORM_ID:Linux>:mesos-linux>
