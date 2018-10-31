@@ -501,14 +501,14 @@ protected:
     string commandString = strings::format(
         "%s %s <POSSIBLY-SENSITIVE-DATA>",
         path::join(launcherDir, MESOS_CONTAINERIZER),
-        MesosContainerizerLaunch::NAME).get();
+        MESOS_CONTAINERIZER_LAUNCH_NAME).get();
 
     LOG(INFO) << "Running '" << commandString << "'";
 
     // Fork the child using launcher.
     vector<string> argv(2);
     argv[0] = MESOS_CONTAINERIZER;
-    argv[1] = MesosContainerizerLaunch::NAME;
+    argv[1] = MESOS_CONTAINERIZER_LAUNCH_NAME;
 
     vector<process::Subprocess::ParentHook> parentHooks;
 #ifdef __WINDOWS__

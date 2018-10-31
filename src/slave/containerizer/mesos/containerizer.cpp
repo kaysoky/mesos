@@ -2028,7 +2028,7 @@ Future<Containerizer::LaunchResult> MesosContainerizerProcess::_launch(
   // Fork the child using launcher.
   vector<string> argv(2);
   argv[0] = path::join(flags.launcher_dir, MESOS_CONTAINERIZER);
-  argv[1] = MesosContainerizerLaunch::NAME;
+  argv[1] = MESOS_CONTAINERIZER_LAUNCH_NAME;
 
   Try<pid_t> forked = launcher->fork(
       containerId,

@@ -30,14 +30,51 @@ namespace mesos {
 namespace internal {
 namespace slave {
 
+const char MESOS_CONTAINERIZER_LAUNCH_NAME[] = "launch";
+
 class MesosContainerizerLaunch : public Subcommand
 {
 public:
-  static const std::string NAME;
-
   struct Flags : public virtual flags::FlagsBase
   {
-    Flags();
+    Flags()
+    {
+      add(&Flags::launch_info,
+          "launch_info",
+          "");
+
+      add(&Flags::pipe_read,
+          "pipe_read",
+          "The read end of the control pipe. This is a file descriptor \n"
+          "on Posix, or a handle on Windows. It's caller's responsibility \n"
+          "to make sure the file descriptor or the handle is inherited \n"
+          "properly in the subprocess. It's used to synchronize with the \n"
+          "parent process. If not specified, no synchronization will happen.");
+
+      add(&Flags::pipe_write,
+          "pipe_write",
+          "The write end of the control pipe. This is a file descriptor \n"
+          "on Posix, or a handle on Windows. It's caller's responsibility \n"
+          "to make sure the file descriptor or the handle is inherited \n"
+          "properly in the subprocess. It's used to synchronize with the \n"
+          "parent process. If not specified, no synchronization will happen.");
+
+      add(&Flags::runtime_directory,
+          "runtime_directory",
+          "The runtime directory for the container (used for checkpointing)");
+
+#ifdef __linux__
+      add(&Flags::namespace_mnt_target,
+          "namespace_mnt_target",
+          "The target 'pid' of the process whose mount namespace we'd like\n"
+          "to enter before executing the command.");
+
+      add(&Flags::unshare_namespace_mnt,
+          "unshare_namespace_mnt",
+          "Whether to launch the command in a new mount namespace.",
+          false);
+#endif // __linux__
+    }
 
     Option<JSON::Object> launch_info;
     Option<int_fd> pipe_read;
@@ -49,7 +86,7 @@ public:
 #endif // __linux__
   };
 
-  MesosContainerizerLaunch() : Subcommand(NAME) {}
+  MesosContainerizerLaunch() : Subcommand(MESOS_CONTAINERIZER_LAUNCH_NAME) {}
 
   Flags flags;
 
