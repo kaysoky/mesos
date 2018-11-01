@@ -53,11 +53,6 @@ if (NOT WIN32)
   add_executable(test-http-framework           test_http_framework.cpp)
   add_executable(test-csi-user-framework       test_csi_user_framework.cpp)
 
-  # TODO(chhsiao): The test CSI plugin is Linux only for now.
-  if (LINUX)
-    add_executable(test-csi-plugin test_csi_plugin.cpp)
-  endif ()
-
   # NOTE: Do not replace this with `link_libraries()`. While it may result in
   # less code, it is deprecated and relies on side effects instead of
   # explicitness.
@@ -92,13 +87,6 @@ if (NOT WIN32)
   target_link_libraries(test-http-framework           PRIVATE mesos-scheduler)
   target_link_libraries(test-csi-user-framework       PRIVATE mesos-scheduler)
 
-  # TODO(chhsiao): The test CSI plugin is Linux only for now.
-  if (LINUX)
-    # NOTE: We explicitly add `grpc` here since the test CSI plugin uses the
-    # server-side gRPC library, which might not be linked in mesos.
-    target_link_libraries(test-csi-plugin PRIVATE mesos grpc)
-  endif ()
-
   # Wrap the example frameworks in a parent target for ease of building
   # or inclusion into other targets.
   add_custom_target(
@@ -119,4 +107,22 @@ if (NOT WIN32)
     test-csi-user-framework
     test-http-executor
     test-http-framework)
+
+
+  # Build the example CSI Plugin.
+  ###############################
+  # TODO(chhsiao): The test CSI plugin is Linux only for now.
+  if (LINUX)
+    add_executable(
+      test-csi-plugin
+      test_csi_plugin.cpp
+      ../csi/utils.cpp)
+
+    # NOTE: We explicitly add `grpc` here since the test CSI plugin uses the
+    # server-side gRPC library, which might not be linked in mesos.
+    target_link_libraries(
+      test-csi-plugin PRIVATE
+      mesos-linux
+      grpc)
+  endif ()
 endif ()
