@@ -316,29 +316,12 @@ if (NOT WIN32)
     mesos-logrotate-logger
     mesos-master)
 
-  # The tests require all the test modules. These are not directly linked but
-  # instead loaded at runtime, hence the manual dependency here.
+  # The tests require all the test modules and example frameworks/executors.
   # NOTE: Modules are not supported on Windows.
-  add_dependencies(
-    mesos-tests
-    testallocator
-    testanonymous
-    testauthentication
-    testauthorizer
-    testcontainer_logger
-    examplemodule
-    testhook
-    testhttpauthenticator
-    testisolator
-    testmastercontender
-    testmasterdetector
-    testqos_controller
-    testresource_estimator)
-
-  # The tests require all the example frameworks and executors.
   # TODO(josephw): The scheduler driver is currently not built on Windows.
   add_dependencies(
     mesos-tests
+    test-modules
     example-frameworks)
 
   # SLRP-related tests are Linux only and require the test CSI plugin binary.

@@ -18,19 +18,93 @@ if (NOT WIN32)
   # Build the test modules.
   #########################
   # NOTE: Modules are not supported on Windows.
-  add_library(testallocator          SHARED EXCLUDE_FROM_ALL test_allocator_module.cpp)
+  add_library(examplemodule          SHARED EXCLUDE_FROM_ALL example_module_impl.cpp)
   add_library(testanonymous          SHARED EXCLUDE_FROM_ALL test_anonymous_module.cpp)
   add_library(testauthentication     SHARED EXCLUDE_FROM_ALL test_authentication_modules.cpp)
-  add_library(testauthorizer         SHARED EXCLUDE_FROM_ALL test_authorizer_module.cpp)
-  add_library(testcontainer_logger   SHARED EXCLUDE_FROM_ALL test_container_logger_module.cpp)
-  add_library(examplemodule          SHARED EXCLUDE_FROM_ALL example_module_impl.cpp)
   add_library(testhook               SHARED EXCLUDE_FROM_ALL test_hook_module.cpp)
   add_library(testhttpauthenticator  SHARED EXCLUDE_FROM_ALL test_http_authenticator_module.cpp)
-  add_library(testisolator           SHARED EXCLUDE_FROM_ALL test_isolator_module.cpp)
-  add_library(testmastercontender    SHARED EXCLUDE_FROM_ALL test_master_contender_module.cpp)
   add_library(testmasterdetector     SHARED EXCLUDE_FROM_ALL test_master_detector_module.cpp)
-  add_library(testqos_controller     SHARED EXCLUDE_FROM_ALL test_qos_controller_module.cpp)
-  add_library(testresource_estimator SHARED EXCLUDE_FROM_ALL test_resource_estimator_module.cpp)
+  add_library(testcontainer_logger   SHARED EXCLUDE_FROM_ALL test_container_logger_module.cpp)
+
+  add_library(
+    testallocator
+    SHARED EXCLUDE_FROM_ALL
+    test_allocator_module.cpp
+    ../master/allocator/mesos/hierarchical.cpp
+    ../master/allocator/mesos/metrics.cpp
+    ../master/allocator/sorter/drf/metrics.cpp
+    ../master/allocator/sorter/drf/sorter.cpp)
+
+  add_library(
+    testauthorizer
+    SHARED EXCLUDE_FROM_ALL
+    test_authorizer_module.cpp
+    ../authorizer/local/authorizer.cpp)
+
+  add_library(
+    testisolator
+    SHARED EXCLUDE_FROM_ALL
+    test_isolator_module.cpp
+    ../authorizer/acls.cpp
+    ../slave/flags.cpp
+    ../slave/containerizer/mesos/isolator.cpp
+    ../usage/usage.cpp)
+
+  # TODO(josephw): This module should not need to build ZK sources.
+  add_library(
+    testmastercontender
+    SHARED EXCLUDE_FROM_ALL
+    test_master_contender_module.cpp
+    ../master/contender/contender.cpp
+    ../master/contender/standalone.cpp
+    ../master/contender/zookeeper.cpp
+    ../zookeeper/contender.cpp)
+
+  add_library(
+    testqos_controller
+    SHARED EXCLUDE_FROM_ALL
+    test_qos_controller_module.cpp
+    ../slave/qos_controller.cpp
+    ../slave/qos_controllers/noop.cpp)
+
+  add_library(
+    testresource_estimator
+    SHARED EXCLUDE_FROM_ALL
+    test_resource_estimator_module.cpp
+    ../slave/resource_estimator.cpp
+    ../slave/resource_estimators/noop.cpp)
+
+  target_link_libraries(examplemodule          PRIVATE mesos-common)
+  target_link_libraries(testallocator          PRIVATE mesos-common)
+  target_link_libraries(testanonymous          PRIVATE mesos-common)
+  target_link_libraries(testauthentication     PRIVATE mesos-common)
+  target_link_libraries(testauthorizer         PRIVATE mesos-common)
+  target_link_libraries(testcontainer_logger   PRIVATE mesos-sandbox-logger)
+  target_link_libraries(testhook               PRIVATE mesos-common)
+  target_link_libraries(testhttpauthenticator  PRIVATE mesos-common)
+  target_link_libraries(testisolator           PRIVATE mesos-common)
+  target_link_libraries(testmastercontender    PRIVATE mesos-detector)
+  target_link_libraries(testmasterdetector     PRIVATE mesos-detector)
+  target_link_libraries(testqos_controller     PRIVATE mesos-common)
+  target_link_libraries(testresource_estimator PRIVATE mesos-common)
+
+  # Wrap the test modules in a parent target for ease of building
+  # or inclusion into other targets.
+  add_custom_target(
+    test-modules DEPENDS
+    testallocator
+    testanonymous
+    testauthentication
+    testauthorizer
+    testcontainer_logger
+    examplemodule
+    testhook
+    testhttpauthenticator
+    testisolator
+    testmastercontender
+    testmasterdetector
+    testqos_controller
+    testresource_estimator)
 
 
   # Build the example frameworks and executors.
@@ -52,23 +126,6 @@ if (NOT WIN32)
   add_executable(test-http-executor            test_http_executor.cpp)
   add_executable(test-http-framework           test_http_framework.cpp)
   add_executable(test-csi-user-framework       test_csi_user_framework.cpp)
-
-  # NOTE: Do not replace this with `link_libraries()`. While it may result in
-  # less code, it is deprecated and relies on side effects instead of
-  # explicitness.
-  target_link_libraries(testallocator          PRIVATE mesos)
-  target_link_libraries(testanonymous          PRIVATE mesos)
-  target_link_libraries(testauthentication     PRIVATE mesos)
-  target_link_libraries(testauthorizer         PRIVATE mesos)
-  target_link_libraries(testcontainer_logger   PRIVATE mesos)
-  target_link_libraries(examplemodule          PRIVATE mesos)
-  target_link_libraries(testhook               PRIVATE mesos)
-  target_link_libraries(testhttpauthenticator  PRIVATE mesos)
-  target_link_libraries(testisolator           PRIVATE mesos)
-  target_link_libraries(testmastercontender    PRIVATE mesos)
-  target_link_libraries(testmasterdetector     PRIVATE mesos)
-  target_link_libraries(testqos_controller     PRIVATE mesos)
-  target_link_libraries(testresource_estimator PRIVATE mesos)
 
   target_link_libraries(balloon-executor              PRIVATE mesos-libexecutor)
   target_link_libraries(balloon-framework             PRIVATE mesos-scheduler)

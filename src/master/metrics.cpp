@@ -757,14 +757,6 @@ void FrameworkMetrics::incrementOperation(const Offer::Operation& operation)
 }
 
 
-string getFrameworkMetricPrefix(const FrameworkInfo& frameworkInfo)
-{
-  // Percent-encode the framework name to avoid characters like '/' and ' '.
-  return "master/frameworks/" + process::http::encode(frameworkInfo.name()) +
-    "/" + stringify(frameworkInfo.id()) + "/";
-}
-
-
 template <typename T>
 void FrameworkMetrics::addMetric(const T& metric)  {
   if (publishPerFrameworkMetrics) {

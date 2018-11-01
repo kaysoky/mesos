@@ -285,7 +285,12 @@ struct FrameworkMetrics
 };
 
 
-std::string getFrameworkMetricPrefix(const FrameworkInfo& frameworkInfo);
+inline std::string getFrameworkMetricPrefix(const FrameworkInfo& frameworkInfo)
+{
+  // Percent-encode the framework name to avoid characters like '/' and ' '.
+  return "master/frameworks/" + process::http::encode(frameworkInfo.name()) +
+    "/" + stringify(frameworkInfo.id()) + "/";
+}
 
 } // namespace master {
 } // namespace internal {
