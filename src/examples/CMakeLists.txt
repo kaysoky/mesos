@@ -98,4 +98,25 @@ if (NOT WIN32)
     # server-side gRPC library, which might not be linked in mesos.
     target_link_libraries(test-csi-plugin PRIVATE mesos grpc)
   endif ()
+
+  # Wrap the example frameworks in a parent target for ease of building
+  # or inclusion into other targets.
+  add_custom_target(
+    example-frameworks DEPENDS
+    balloon-executor
+    balloon-framework
+    disk-full-framework
+    docker-no-executor-framework
+    dynamic-reservation-framework
+    inverse-offer-framework
+    load-generator-framework
+    long-lived-executor
+    long-lived-framework
+    no-executor-framework
+    persistent-volume-framework
+    test-executor
+    test-framework
+    test-csi-user-framework
+    test-http-executor
+    test-http-framework)
 endif ()

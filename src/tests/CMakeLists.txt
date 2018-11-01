@@ -339,21 +339,7 @@ if (NOT WIN32)
   # TODO(josephw): The scheduler driver is currently not built on Windows.
   add_dependencies(
     mesos-tests
-    balloon-executor
-    balloon-framework
-    disk-full-framework
-    docker-no-executor-framework
-    dynamic-reservation-framework
-    load-generator-framework
-    long-lived-executor
-    long-lived-framework
-    no-executor-framework
-    persistent-volume-framework
-    test-executor
-    test-framework
-    test-csi-user-framework
-    test-http-executor
-    test-http-framework)
+    example-frameworks)
 
   # SLRP-related tests are Linux only and require the test CSI plugin binary.
   if (LINUX)
