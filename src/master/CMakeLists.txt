@@ -14,10 +14,56 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# THE MASTER EXECUTABLE.
-########################
+# MASTER LIBRARY.
+#################
+# NOTE: These are separate from the executable below for the purpose
+# of linking these sources into tests.
+set(MASTER_SRC
+  flags.cpp
+  framework.cpp
+  http.cpp
+  maintenance.cpp
+  master.cpp
+  metrics.cpp
+  quota.cpp
+  quota_handler.cpp
+  readonly_handler.cpp
+  registrar.cpp
+  registry_operations.cpp
+  weights.cpp
+  weights_handler.cpp
+  validation.cpp
+  allocator/allocator.cpp
+  allocator/mesos/hierarchical.cpp
+  allocator/mesos/metrics.cpp
+  allocator/sorter/drf/metrics.cpp
+  allocator/sorter/drf/sorter.cpp
+  allocator/sorter/random/sorter.cpp
+  contender/contender.cpp
+  contender/standalone.cpp
+  contender/zookeeper.cpp
+
+  # NOTE: This intentionally appears twice (see `SCHEDULER_SRC`), as it is
+  # a small helper method used in both Master and Scheduler.
+  ../scheduler/validation.cpp
+
+  ../watcher/whitelist_watcher.cpp
+
+  ../zookeeper/contender.cpp)
+
+add_library(mesos-libmaster ${MASTER_SRC})
+
+target_link_libraries(
+  mesos-libmaster PUBLIC
+  mesos-replicated-log
+  mesos-master-agent)
+
+
+# MASTER EXECUTABLE.
+####################
 add_executable(mesos-master main.cpp)
-target_link_libraries(mesos-master PRIVATE mesos)
-if (ENABLE_JEMALLOC_ALLOCATOR)
-  target_link_libraries(mesos-master PRIVATE jemalloc)
-endif ()
+
+target_link_libraries(
+  mesos-master PRIVATE
+  mesos-libmaster
+  $<$<BOOL:${ENABLE_JEMALLOC_ALLOCATOR}>:jemalloc>)

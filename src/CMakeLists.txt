@@ -341,7 +341,9 @@ if (NOT WIN32)
     log/log.cpp
     log/metrics.cpp
     log/recover.cpp
-    log/replica.cpp)
+    log/replica.cpp
+
+    state/log.cpp)
 
   add_library(mesos-replicated-log ${REPLOG_SRC})
 
@@ -350,6 +352,44 @@ if (NOT WIN32)
     mesos-detector
     leveldb)
 endif ()
+
+
+# MESOS STATE STORAGE LIBRARY.
+##############################
+set(STATE_SRC
+  state/in_memory.cpp)
+
+if (NOT WIN32)
+  list(APPEND STATE_SRC
+    state/leveldb.cpp
+    state/zookeeper.cpp)
+endif ()
+
+add_library(mesos-state-storage ${STATE_SRC})
+
+target_link_libraries(
+  mesos-state-storage PUBLIC
+  mesos-detector
+  $<$<NOT:$<BOOL:${WIN32}>>:leveldb>)
+
+
+
+# MESOS MASTER AND AGENT LIBRARY.
+#################################
+# These are sources used jointly by the the Master and Agent.
+set(MASTER_AGENT_SRC
+  authorizer/acls.cpp
+  authorizer/authorizer.cpp
+  authorizer/local/authorizer.cpp
+
+  files/files.cpp)
+
+add_library(mesos-master-agent ${MASTER_AGENT_SRC})
+
+target_link_libraries(
+  mesos-master-agent PUBLIC
+  mesos-common
+  mesos-state-storage)
 
 
 # SOURCE FILES FOR THE MESOS LIBRARY.
@@ -420,19 +460,11 @@ if (ENABLE_SSL)
     authentication/executor/jwt_secret_generator.cpp)
 endif ()
 
-set(AUTHORIZER_SRC
-  authorizer/acls.cpp
-  authorizer/authorizer.cpp
-  authorizer/local/authorizer.cpp)
-
 set(CSI_SRC
   csi/client.cpp
   csi/paths.cpp
   csi/rpc.cpp
   csi/utils.cpp)
-
-set(FILES_SRC
-  files/files.cpp)
 
 set(LINUX_SRC
   containerizer/mesos/cni_setup.cpp
@@ -506,35 +538,6 @@ endif()
 set(LOCAL_SRC
   local/local.cpp)
 
-set(MASTER_SRC
-  master/flags.cpp
-  master/framework.cpp
-  master/http.cpp
-  master/maintenance.cpp
-  master/master.cpp
-  master/metrics.cpp
-  master/quota.cpp
-  master/quota_handler.cpp
-  master/readonly_handler.cpp
-  master/registrar.cpp
-  master/registry_operations.cpp
-  master/weights.cpp
-  master/weights_handler.cpp
-  master/validation.cpp
-  master/allocator/allocator.cpp
-  master/allocator/mesos/hierarchical.cpp
-  master/allocator/mesos/metrics.cpp
-  master/allocator/sorter/drf/metrics.cpp
-  master/allocator/sorter/drf/sorter.cpp
-  master/allocator/sorter/random/sorter.cpp
-  master/contender/contender.cpp
-  master/contender/standalone.cpp
-  master/contender/zookeeper.cpp
-
-  # NOTE: This intentionally appears twice (see `SCHEDULER_SRC`), as it is
-  # a small helper method used in both Master and Scheduler.
-  scheduler/validation.cpp)
-
 set(OCI_SRC
   oci/spec.cpp)
 
@@ -559,16 +562,6 @@ endif ()
 set(SECRET_SRC
   secret/resolver.cpp)
 
-set(STATE_SRC
-  state/in_memory.cpp)
-
-if (NOT WIN32)
-  list(APPEND STATE_SRC
-    state/leveldb.cpp
-    state/log.cpp
-    state/zookeeper.cpp)
-endif ()
-
 set(STATUS_UPDATE_MANAGER_SRC
   status_update_manager/operation.cpp)
 
@@ -583,9 +576,6 @@ set(URI_SRC
 set(USAGE_SRC
   usage/usage.cpp)
 
-set(WATCHER_SRC
-  watcher/whitelist_watcher.cpp)
-
 set(WIN32_SRC
   slave/containerizer/mesos/isolators/docker/runtime.cpp
   slave/containerizer/mesos/isolators/windows/cpu.cpp
@@ -594,26 +584,17 @@ set(WIN32_SRC
   slave/containerizer/mesos/isolators/filesystem/posix.cpp
   slave/containerizer/mesos/isolators/filesystem/windows.cpp)
 
-set(ZOOKEEPER_SRC
-  zookeeper/contender.cpp)
-
 set(MESOS_SRC
   ${AGENT_SRC}
   ${APPC_SRC}
-  ${AUTHORIZER_SRC}
   ${CSI_SRC}
-  ${FILES_SRC}
   ${LOCAL_SRC}
-  ${MASTER_SRC}
   ${OCI_SRC}
   ${RESOURCE_PROVIDER_SRC}
   ${SECRET_SRC}
-  ${STATE_SRC}
   ${STATUS_UPDATE_MANAGER_SRC}
   ${URI_SRC}
-  ${USAGE_SRC}
-  ${WATCHER_SRC}
-  ${ZOOKEEPER_SRC})
+  ${USAGE_SRC})
 
 if (NOT WIN32)
   list(APPEND MESOS_SRC
@@ -682,6 +663,8 @@ target_link_libraries(
   mesos-docker
   mesos-hdfs
   mesos-libexecutor
+  mesos-libmaster
+  mesos-master-agent
   mesos-protobufs
   mesos-replicated-log
   mesos-sandbox-logger
