@@ -21,12 +21,12 @@ if (NOT WIN32)
   # NOTE: This library uses underscores because of a hard-coded expectation of
   # `src/tests/module`.
   add_library(logrotate_container_logger SHARED lib_logrotate.cpp)
-  target_link_libraries(logrotate_container_logger PRIVATE mesos)
+  target_link_libraries(logrotate_container_logger PRIVATE mesos-common)
 
   # NOTE: This does not link to the above library because this is a
   # light-weight companion binary which can be run independently.
   add_executable(mesos-logrotate-logger logrotate.cpp)
-  target_link_libraries(mesos-logrotate-logger PRIVATE mesos)
+  target_link_libraries(mesos-logrotate-logger PRIVATE mesos-common)
 
   add_dependencies(
     logrotate_container_logger

@@ -18,4 +18,4 @@
 ##################################
 # NOTE: This library uses underscores to be consistent with other modules.
 add_library(load_qos_controller load.cpp)
-target_link_libraries(load_qos_controller PRIVATE mesos)
+target_link_libraries(load_qos_controller PRIVATE mesos-common)
