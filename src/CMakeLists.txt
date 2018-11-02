@@ -394,226 +394,17 @@ target_link_libraries(
 
 # SOURCE FILES FOR THE MESOS LIBRARY.
 #####################################
-set(AGENT_SRC
-  docker/spec.cpp
-  slave/compatibility.cpp
-  slave/constants.cpp
-  slave/container_daemon.cpp
-  slave/flags.cpp
-  slave/gc.cpp
-  slave/http.cpp
-  slave/metrics.cpp
-  slave/paths.cpp
-  slave/qos_controller.cpp
-  slave/qos_controllers/noop.cpp
-  slave/resource_estimator.cpp
-  slave/slave.cpp
-  slave/state.cpp
-  slave/task_status_update_manager.cpp
-  slave/validation.cpp
-  slave/containerizer/composing.cpp
-  slave/containerizer/containerizer.cpp
-  slave/containerizer/docker.cpp
-  slave/containerizer/fetcher.cpp
-  slave/containerizer/mesos/containerizer.cpp
-  slave/containerizer/mesos/isolator.cpp
-  slave/containerizer/mesos/launcher.cpp
-  slave/containerizer/mesos/paths.cpp
-  slave/containerizer/mesos/io/switchboard.cpp
-  slave/containerizer/mesos/provisioner/backend.cpp
-  slave/containerizer/mesos/provisioner/paths.cpp
-  slave/containerizer/mesos/provisioner/provisioner.cpp
-  slave/containerizer/mesos/provisioner/store.cpp
-  slave/containerizer/mesos/provisioner/appc/cache.cpp
-  slave/containerizer/mesos/provisioner/appc/fetcher.cpp
-  slave/containerizer/mesos/provisioner/appc/paths.cpp
-  slave/containerizer/mesos/provisioner/appc/store.cpp
-  slave/containerizer/mesos/provisioner/backends/copy.cpp
-  slave/containerizer/mesos/provisioner/docker/image_tar_puller.cpp
-  slave/containerizer/mesos/provisioner/docker/metadata_manager.cpp
-  slave/containerizer/mesos/provisioner/docker/paths.cpp
-  slave/containerizer/mesos/provisioner/docker/puller.cpp
-  slave/containerizer/mesos/provisioner/docker/registry_puller.cpp
-  slave/containerizer/mesos/provisioner/docker/store.cpp
-  slave/resource_estimators/noop.cpp)
-
-if (NOT WIN32)
-  list(APPEND AGENT_SRC
-    slave/containerizer/mesos/utils.cpp
-    slave/containerizer/mesos/isolators/environment_secret.cpp
-    slave/containerizer/mesos/isolators/docker/volume/driver.cpp
-    slave/containerizer/mesos/isolators/docker/volume/paths.cpp
-    slave/containerizer/mesos/isolators/filesystem/posix.cpp
-    slave/containerizer/mesos/isolators/network/cni/paths.cpp
-    slave/containerizer/mesos/isolators/network/cni/spec.cpp
-    slave/containerizer/mesos/isolators/posix/disk.cpp
-    slave/containerizer/mesos/isolators/posix/rlimits.cpp
-    slave/containerizer/mesos/isolators/volume/sandbox_path.cpp
-    slave/containerizer/mesos/provisioner/utils.cpp)
-endif ()
-
-set(APPC_SRC
-  appc/spec.cpp)
-
 if (ENABLE_SSL)
   list(APPEND AUTHENTICATION_SRC
     authentication/executor/jwt_secret_generator.cpp)
 endif ()
 
-set(CSI_SRC
-  csi/client.cpp
-  csi/paths.cpp
-  csi/rpc.cpp
-  csi/utils.cpp)
-
-set(LINUX_SRC
-  containerizer/mesos/cni_setup.cpp
-  slave/containerizer/mesos/linux_launcher.cpp
-  slave/containerizer/mesos/isolators/appc/runtime.cpp
-  slave/containerizer/mesos/isolators/cgroups/cgroups.cpp
-  slave/containerizer/mesos/isolators/cgroups/subsystem.cpp
-  slave/containerizer/mesos/isolators/cgroups/subsystems/blkio.cpp
-  slave/containerizer/mesos/isolators/cgroups/subsystems/cpu.cpp
-  slave/containerizer/mesos/isolators/cgroups/subsystems/cpuacct.cpp
-  slave/containerizer/mesos/isolators/cgroups/subsystems/cpuset.cpp
-  slave/containerizer/mesos/isolators/cgroups/subsystems/devices.cpp
-  slave/containerizer/mesos/isolators/cgroups/subsystems/hugetlb.cpp
-  slave/containerizer/mesos/isolators/cgroups/subsystems/memory.cpp
-  slave/containerizer/mesos/isolators/cgroups/subsystems/net_cls.cpp
-  slave/containerizer/mesos/isolators/cgroups/subsystems/net_prio.cpp
-  slave/containerizer/mesos/isolators/cgroups/subsystems/perf_event.cpp
-  slave/containerizer/mesos/isolators/cgroups/subsystems/pids.cpp
-  slave/containerizer/mesos/isolators/docker/runtime.cpp
-  slave/containerizer/mesos/isolators/docker/volume/isolator.cpp
-  slave/containerizer/mesos/isolators/filesystem/linux.cpp
-  slave/containerizer/mesos/isolators/filesystem/shared.cpp
-  slave/containerizer/mesos/isolators/gpu/allocator.cpp
-  slave/containerizer/mesos/isolators/gpu/isolator.cpp
-  slave/containerizer/mesos/isolators/gpu/nvml.cpp
-  slave/containerizer/mesos/isolators/gpu/volume.cpp
-  slave/containerizer/mesos/isolators/linux/capabilities.cpp
-  slave/containerizer/mesos/isolators/linux/devices.cpp
-  slave/containerizer/mesos/isolators/namespaces/ipc.cpp
-  slave/containerizer/mesos/isolators/namespaces/pid.cpp
-  slave/containerizer/mesos/isolators/network/cni/cni.cpp
-  slave/containerizer/mesos/isolators/volume/host_path.cpp
-  slave/containerizer/mesos/isolators/volume/image.cpp
-  slave/containerizer/mesos/isolators/volume/secret.cpp
-  slave/containerizer/mesos/provisioner/backends/aufs.cpp
-  slave/containerizer/mesos/provisioner/backends/bind.cpp
-  slave/containerizer/mesos/provisioner/backends/overlay.cpp)
-
-if (ENABLE_XFS_DISK_ISOLATOR)
-  list(APPEND LINUX_SRC
-    slave/containerizer/mesos/isolators/xfs/disk.cpp
-    slave/containerizer/mesos/isolators/xfs/utils.cpp)
-endif ()
-
-if (ENABLE_LINUX_ROUTING)
-  list(APPEND LINUX_SRC
-    linux/routing/handle.cpp
-    linux/routing/route.cpp
-    linux/routing/utils.cpp
-    linux/routing/diagnosis/diagnosis.cpp
-    linux/routing/filter/basic.cpp
-    linux/routing/filter/icmp.cpp
-    linux/routing/filter/ip.cpp
-    linux/routing/link/link.cpp
-    linux/routing/link/veth.cpp
-    linux/routing/queueing/fq_codel.cpp
-    linux/routing/queueing/htb.cpp
-    linux/routing/queueing/ingress.cpp)
-endif ()
-
-if (ENABLE_NETWORK_PORTS_ISOLATOR)
-  list(APPEND LINUX_SRC
-    slave/containerizer/mesos/isolators/network/ports.cpp)
-endif ()
-
-if (ENABLE_PORT_MAPPING_ISOLATOR)
-  list(APPEND LINUX_SRC
-    slave/containerizer/mesos/isolators/network/port_mapping.cpp)
-endif()
-
 set(LOCAL_SRC
   local/local.cpp)
 
-set(OCI_SRC
-  oci/spec.cpp)
 
-set(RESOURCE_PROVIDER_SRC
-  resource_provider/daemon.cpp
-  resource_provider/detector.cpp
-  resource_provider/driver.cpp
-  resource_provider/local.cpp
-  resource_provider/manager.cpp
-  resource_provider/registrar.cpp
-  resource_provider/validation.cpp
-  resource_provider/storage/disk_profile_adaptor.cpp
-  resource_provider/storage/disk_profile_utils.cpp)
-
-# NOTE: The storage local resource provider uses Unix domain sockets to talk to
-# CSI plugins, thus it is currently not supported on Windows.
-if (NOT WIN32)
-  list(APPEND RESOURCE_PROVIDER_SRC
-    resource_provider/storage/provider.cpp)
-endif ()
-
-set(SECRET_SRC
-  secret/resolver.cpp)
-
-set(STATUS_UPDATE_MANAGER_SRC
-  status_update_manager/operation.cpp)
-
-set(URI_SRC
-  uri/fetcher.cpp
-  uri/utils.cpp
-  uri/fetchers/copy.cpp
-  uri/fetchers/curl.cpp
-  uri/fetchers/docker.cpp
-  uri/fetchers/hadoop.cpp)
-
-set(USAGE_SRC
-  usage/usage.cpp)
-
-set(WIN32_SRC
-  slave/containerizer/mesos/isolators/docker/runtime.cpp
-  slave/containerizer/mesos/isolators/windows/cpu.cpp
-  slave/containerizer/mesos/isolators/windows/mem.cpp
-  slave/containerizer/mesos/isolators/environment_secret.cpp
-  slave/containerizer/mesos/isolators/filesystem/posix.cpp
-  slave/containerizer/mesos/isolators/filesystem/windows.cpp)
-
-set(MESOS_SRC
-  ${AGENT_SRC}
-  ${APPC_SRC}
-  ${CSI_SRC}
-  ${LOCAL_SRC}
-  ${OCI_SRC}
-  ${RESOURCE_PROVIDER_SRC}
-  ${SECRET_SRC}
-  ${STATUS_UPDATE_MANAGER_SRC}
-  ${URI_SRC}
-  ${USAGE_SRC})
-
-if (NOT WIN32)
-  list(APPEND MESOS_SRC
-    ${POSIX_SRC})
-endif ()
-
-# Include source for linux build.
-#
-# TODO(andschwa): Make this conditional happen sooner, instead of
-# here, and remove unnecessary variables.
-if (LINUX)
-  list(APPEND MESOS_SRC ${LINUX_SRC})
-endif ()
-
-# Include source for Windows build.
-if (WIN32)
-  list(APPEND MESOS_SRC ${WIN32_SRC})
-endif ()
-
+# CONFIGURE OUTPUT LOCATIONS.
+#############################
 # Generate all binaries in the same folder.
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/src)
 if (WIN32)
@@ -631,61 +422,36 @@ endif ()
 
 # THE MESOS LIBRARY
 ###################
-add_library(mesos ${MESOS_SRC})
+# TODO(josephw): Figure out which libraries should be versioned now that
+# libmesos is gone.
+# set_target_properties(
+#   mesos PROPERTIES
+#   VERSION ${MESOS_PACKAGE_VERSION}
+#   SOVERSION ${MESOS_PACKAGE_SOVERSION})
 
-set_target_properties(
-  mesos PROPERTIES
-  VERSION ${MESOS_PACKAGE_VERSION}
-  SOVERSION ${MESOS_PACKAGE_SOVERSION})
+# TODO(josephw): Check if these directories are still necessary for anything.
+# target_include_directories(
+#   mesos PUBLIC
+#   ${MESOS_BIN_INCLUDE_DIR}
+#   ${MESOS_BIN_SRC_DIR}
+#   ${MESOS_SRC_DIR})
 
-target_compile_definitions(
-  mesos PUBLIC
-  $<$<BOOL:${ENABLE_XFS_DISK_ISOLATOR}>:ENABLE_XFS_DISK_ISOLATOR>
-  $<$<BOOL:${ENABLE_PORT_MAPPING_ISOLATOR}>:ENABLE_PORT_MAPPING_ISOLATOR>
-  $<$<BOOL:${ENABLE_NETWORK_PORTS_ISOLATOR}>:ENABLE_NETWORK_PORTS_ISOLATOR>)
+# TODO(josephw): Figure out where the Java target should go.
+# target_link_libraries(
+#   mesos PUBLIC
+#   $<$<BOOL:${HAS_JAVA}>:mesos-java>)
 
-target_include_directories(
-  mesos PUBLIC
-  ${MESOS_BIN_INCLUDE_DIR}
-  ${MESOS_BIN_SRC_DIR}
-  ${MESOS_SRC_DIR})
+# TODO(josephw): Figure out which target(s) would benefit from precompiled
+# headers now that libmesos has been split up into smaller targets.
+# if (ENABLE_PRECOMPILED_HEADERS)
+#   set_target_properties(
+#     mesos PROPERTIES
+#     COTIRE_ADD_UNITY_BUILD FALSE
+#     COTIRE_PREFIX_HEADER_INCLUDE_PATH "${CMAKE_SOURCE_DIR}/3rdparty;${CMAKE_BINARY_DIR}/3rdparty")
+#
+#   cotire(mesos)
+# endif ()
 
-target_link_libraries(
-  mesos PUBLIC
-  process
-  sasl2
-  zookeeper
-
-  # TODO(josephw): This is temporary as libmesos is partitioned into smaller
-  # libraries. Downstream targets like tests still expect all sources to be
-  # globbed together into one library.
-  mesos-detector
-  mesos-docker
-  mesos-hdfs
-  mesos-libexecutor
-  mesos-libmaster
-  mesos-master-agent
-  mesos-protobufs
-  mesos-replicated-log
-  mesos-sandbox-logger
-  mesos-scheduler
-  $<$<PLATFORM_ID:Linux>:mesos-linux>
-
-  $<$<PLATFORM_ID:Linux>:nvml>
-  $<$<BOOL:${HAS_JAVA}>:mesos-java>)
-
-if (NOT WIN32)
-  target_link_libraries(mesos PUBLIC leveldb)
-endif ()
-
-if (ENABLE_PRECOMPILED_HEADERS)
-  set_target_properties(
-    mesos PROPERTIES
-    COTIRE_ADD_UNITY_BUILD FALSE
-    COTIRE_PREFIX_HEADER_INCLUDE_PATH "${CMAKE_SOURCE_DIR}/3rdparty;${CMAKE_BINARY_DIR}/3rdparty")
-
-  cotire(mesos)
-endif ()
 
 # BUILD THE MESOS EXECUTABLES.
 ##############################
