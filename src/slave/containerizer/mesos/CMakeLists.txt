@@ -30,8 +30,17 @@ target_link_libraries(
   $<$<PLATFORM_ID:Linux>:mesos-linux>)
 
 if (NOT WIN32)
-  add_executable(mesos-io-switchboard io/switchboard_main.cpp)
-  target_link_libraries(mesos-io-switchboard PRIVATE mesos)
+  add_executable(
+    mesos-io-switchboard
+    io/switchboard.cpp
+    io/switchboard_main.cpp
+    paths.cpp)
+
+  target_link_libraries(
+    mesos-io-switchboard PRIVATE
+    mesos-common
+    mesos-sandbox-logger
+    $<$<PLATFORM_ID:Linux>:mesos-linux>)
 
   add_executable(
     mesos-cni-port-mapper
