@@ -24,7 +24,7 @@ target_link_libraries(mesos-execute PRIVATE mesos-scheduler mesos-hdfs)
 # Utility used to determine the current leading master.
 #######################################################
 add_executable(mesos-resolve resolve.cpp)
-target_link_libraries(mesos-resolve PRIVATE mesos)
+target_link_libraries(mesos-resolve PRIVATE mesos-detector)
 
 # MESOS CLI.
 # Soon to be deprecated old version of the Mesos CLI.
@@ -36,6 +36,9 @@ if (NOT ENABLE_NEW_CLI AND NOT WIN32)
   # there is a name collision. To enable them both, change this not to
   # be named `mesos`.
   add_executable(mesos-cli mesos.cpp)
-  target_link_libraries(mesos-cli PRIVATE mesos)
+  target_link_libraries(mesos-cli PRIVATE stout)
   set_target_properties(mesos-cli PROPERTIES OUTPUT mesos)
+
+  # NOTE: We do not add compile time dependencies for this CLI because
+  # this binary literally executes other mesos binaries on the path at runtime.
 endif ()

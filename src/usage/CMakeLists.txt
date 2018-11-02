@@ -16,5 +16,9 @@
 
 # THE USAGE EXECUTABLE.
 #######################
-add_executable(mesos-usage main.cpp)
-target_link_libraries(mesos-usage PRIVATE mesos)
+add_executable(
+  mesos-usage
+  main.cpp
+  usage.cpp)
+
+target_link_libraries(mesos-usage PRIVATE mesos-common)
