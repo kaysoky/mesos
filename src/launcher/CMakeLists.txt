@@ -28,5 +28,9 @@ add_dependencies(mesos-executor mesos-containerizer)
 
 # THE FETCHER EXECUTABLE.
 #########################
-add_executable(mesos-fetcher fetcher.cpp)
-target_link_libraries(mesos-fetcher PRIVATE mesos)
+add_executable(
+  mesos-fetcher
+  fetcher.cpp
+  ../slave/containerizer/fetcher.cpp)
+
+target_link_libraries(mesos-fetcher PRIVATE mesos-common mesos-hdfs)
