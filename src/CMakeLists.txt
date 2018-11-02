@@ -317,6 +317,19 @@ target_link_libraries(
   mesos-protobufs)
 
 
+# MESOS SANDBOX CONTAINER LOGGER LIBRARY.
+#########################################
+set(SANDBOX_LOGGER_SRC
+  slave/container_logger.cpp
+  slave/container_loggers/sandbox.cpp)
+
+add_library(mesos-sandbox-logger ${SANDBOX_LOGGER_SRC})
+
+target_link_libraries(
+  mesos-sandbox-logger PUBLIC
+  mesos-common)
+
+
 # SOURCE FILES FOR THE MESOS LIBRARY.
 #####################################
 set(AGENT_SRC
@@ -324,7 +337,6 @@ set(AGENT_SRC
   slave/compatibility.cpp
   slave/constants.cpp
   slave/container_daemon.cpp
-  slave/container_logger.cpp
   slave/flags.cpp
   slave/gc.cpp
   slave/http.cpp
@@ -337,7 +349,6 @@ set(AGENT_SRC
   slave/state.cpp
   slave/task_status_update_manager.cpp
   slave/validation.cpp
-  slave/container_loggers/sandbox.cpp
   slave/containerizer/composing.cpp
   slave/containerizer/containerizer.cpp
   slave/containerizer/docker.cpp
@@ -666,6 +677,7 @@ target_link_libraries(
   mesos-hdfs
   mesos-libexecutor
   mesos-protobufs
+  mesos-sandbox-logger
   mesos-scheduler
   $<$<PLATFORM_ID:Linux>:mesos-linux>
 
