@@ -19,6 +19,15 @@ if (NOT WIN32)
   # THE MESOS LOG.
   # Utility used to interact with the replicated log.
   ###################################################
-  add_executable(mesos-log main.cpp)
-  target_link_libraries(mesos-log PRIVATE mesos)
+  add_executable(
+    mesos-log
+    main.cpp
+    tool/benchmark.cpp
+    tool/initialize.cpp
+    tool/read.cpp
+    tool/replica.cpp)
+
+  target_link_libraries(
+    mesos-log PRIVATE
+    mesos-replicated-log)
 endif ()

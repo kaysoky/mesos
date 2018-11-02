@@ -330,6 +330,28 @@ target_link_libraries(
   mesos-common)
 
 
+# MESOS REPLICATED LOG LIBRARY.
+###############################
+if (NOT WIN32)
+  set(REPLOG_SRC
+    log/catchup.cpp
+    log/consensus.cpp
+    log/coordinator.cpp
+    log/leveldb.cpp
+    log/log.cpp
+    log/metrics.cpp
+    log/recover.cpp
+    log/replica.cpp)
+
+  add_library(mesos-replicated-log ${REPLOG_SRC})
+
+  target_link_libraries(
+    mesos-replicated-log PUBLIC
+    mesos-detector
+    leveldb)
+endif ()
+
+
 # SOURCE FILES FOR THE MESOS LIBRARY.
 #####################################
 set(AGENT_SRC
@@ -484,21 +506,6 @@ endif()
 set(LOCAL_SRC
   local/local.cpp)
 
-set(LOG_SRC
-  log/catchup.cpp
-  log/consensus.cpp
-  log/coordinator.cpp
-  log/leveldb.cpp
-  log/log.cpp
-  log/main.cpp
-  log/metrics.cpp
-  log/recover.cpp
-  log/replica.cpp
-  log/tool/benchmark.cpp
-  log/tool/initialize.cpp
-  log/tool/read.cpp
-  log/tool/replica.cpp)
-
 set(MASTER_SRC
   master/flags.cpp
   master/framework.cpp
@@ -610,7 +617,6 @@ set(MESOS_SRC
 
 if (NOT WIN32)
   list(APPEND MESOS_SRC
-    ${LOG_SRC}
     ${POSIX_SRC})
 endif ()
 
@@ -677,6 +683,7 @@ target_link_libraries(
   mesos-hdfs
   mesos-libexecutor
   mesos-protobufs
+  mesos-replicated-log
   mesos-sandbox-logger
   mesos-scheduler
   $<$<PLATFORM_ID:Linux>:mesos-linux>
