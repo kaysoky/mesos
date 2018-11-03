@@ -399,9 +399,6 @@ if (ENABLE_SSL)
     authentication/executor/jwt_secret_generator.cpp)
 endif ()
 
-set(LOCAL_SRC
-  local/local.cpp)
-
 
 # CONFIGURE OUTPUT LOCATIONS.
 #############################

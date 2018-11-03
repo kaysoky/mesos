@@ -57,7 +57,10 @@ set(MESOS_TESTS_UTILS_SRC
   module.cpp
   resources_utils.cpp
   utils.cpp
-  containerizer/launcher.cpp)
+  containerizer/launcher.cpp
+
+  # Used by 'log_tests.cpp'.
+  ../log/tool/initialize.cpp)
 
 if (NOT WIN32)
   list(APPEND MESOS_TESTS_UTILS_SRC
@@ -270,7 +273,10 @@ endif ()
 add_library(mesos-tests-interface INTERFACE)
 target_link_libraries(
   mesos-tests-interface INTERFACE
-  mesos
+  mesos-libagent
+  mesos-libexecutor
+  mesos-libmaster
+  mesos-scheduler
   googletest)
 
 if (NOT WIN32)

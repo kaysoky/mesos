@@ -16,10 +16,16 @@
 
 # TODO(josephw): Enable this on Windows after sorting out the dependencies.
 if (NOT WIN32)
-  # THE MESOS LOCAL EXECUTABLE.
+  # MESOS LOCAL EXECUTABLE.
   # Used to start a local mesos cluster for testing purposes.
   ###########################################################
-  add_executable(mesos-local main.cpp)
-  target_link_libraries(mesos-local PRIVATE mesos)
-  add_dependencies(mesos-local mesos-agent mesos-master)
+  add_executable(
+    mesos-local
+    main.cpp
+    local.cpp)
+
+  target_link_libraries(
+    mesos-local PRIVATE
+    mesos-libmaster
+    mesos-libagent)
 endif ()
