@@ -151,6 +151,7 @@ using ::recordio::Decoder;
 
 using std::list;
 using std::map;
+using std::shared_ptr;
 using std::string;
 using std::tie;
 using std::tuple;
@@ -737,62 +738,186 @@ Future<Response> Http::executor(
 
   v1::executor::Call v1Call;
 
-  Option<string> contentType = request.headers.get("Content-Type");
-  if (contentType.isNone()) {
+  Option<string> contentType_ = request.headers.get("Content-Type");
+  if (contentType_.isNone()) {
     return BadRequest("Expecting 'Content-Type' to be present");
   }
 
-  if (contentType.get() == APPLICATION_PROTOBUF) {
-    if (!v1Call.ParseFromString(request.body)) {
-      return BadRequest("Failed to parse body into Call protobuf");
-    }
-  } else if (contentType.get() == APPLICATION_JSON) {
-    Try<JSON::Value> value = JSON::parse(request.body);
-    if (value.isError()) {
-      return BadRequest("Failed to parse body into JSON: " + value.error());
-    }
-
-    Try<v1::executor::Call> parse =
-      ::protobuf::parse<v1::executor::Call>(value.get());
-
-    if (parse.isError()) {
-      return BadRequest("Failed to convert JSON into Call protobuf: " +
-                        parse.error());
-    }
-
-    v1Call = parse.get();
+  ContentType contentType;
+  if (contentType_.get() == APPLICATION_JSON) {
+    contentType = ContentType::JSON;
+  } else if (contentType_.get() == APPLICATION_PROTOBUF) {
+    contentType = ContentType::PROTOBUF;
+  } else if (contentType_.get() == APPLICATION_RECORDIO) {
+    contentType = ContentType::RECORDIO;
   } else {
     return UnsupportedMediaType(
         string("Expecting 'Content-Type' of ") +
-        APPLICATION_JSON + " or " + APPLICATION_PROTOBUF);
+        APPLICATION_JSON + " or " + APPLICATION_PROTOBUF +
+        + " or " + APPLICATION_RECORDIO);
   }
 
-  const executor::Call call = devolve(v1Call);
+  Option<ContentType> messageContentType;
+  Option<string> messageContentType_ =
+    request.headers.get(MESSAGE_CONTENT_TYPE);
 
-  Option<Error> error = common::validation::validateExecutorCall(call);
+  if (streamingMediaType(contentType)) {
+    if (messageContentType_.isNone()) {
+      return BadRequest(
+          "Expecting '" + stringify(MESSAGE_CONTENT_TYPE) + "' to be" +
+          " set for streaming requests");
+    }
 
-  if (error.isSome()) {
-    return BadRequest("Failed to validate Executor::Call: " + error->message);
-  }
-
-  ContentType acceptType;
-
-  if (call.type() == executor::Call::SUBSCRIBE) {
-    // We default to JSON since an empty 'Accept' header
-    // results in all media types considered acceptable.
-    if (request.acceptsMediaType(APPLICATION_JSON)) {
-      acceptType = ContentType::JSON;
-    } else if (request.acceptsMediaType(APPLICATION_PROTOBUF)) {
-      acceptType = ContentType::PROTOBUF;
+    if (messageContentType_.get() == APPLICATION_JSON) {
+      messageContentType = Option<ContentType>(ContentType::JSON);
+    } else if (messageContentType_.get() == APPLICATION_PROTOBUF) {
+      messageContentType = Option<ContentType>(ContentType::PROTOBUF);
     } else {
-      return NotAcceptable(
-          string("Expecting 'Accept' to allow ") +
-          "'" + APPLICATION_PROTOBUF + "' or '" + APPLICATION_JSON + "'");
+      return UnsupportedMediaType(
+          string("Expecting '") + MESSAGE_CONTENT_TYPE + "' of " +
+          APPLICATION_JSON + " or " + APPLICATION_PROTOBUF);
     }
   } else {
-    if (slave->state == Slave::RECOVERING) {
-      return ServiceUnavailable("Agent has not finished recovery");
+    // Validate that a client has not set the "Message-Content-Type"
+    // header for a non-streaming request.
+    if (messageContentType_.isSome()) {
+      return UnsupportedMediaType(
+          string("Expecting '") + MESSAGE_CONTENT_TYPE + "' to be not"
+          " set for non-streaming requests");
     }
+  }
+
+  // This lambda deserializes a string into a valid `Call`
+  // based on the content type.
+  auto deserializer = [](const string& body, ContentType contentType)
+      -> Try<mesos::executor::Call> {
+    Try<v1::executor::Call> v1Call =
+      deserialize<v1::executor::Call>(contentType, body);
+
+    if (v1Call.isError()) {
+      return Error(v1Call.error());
+    }
+
+    mesos::executor::Call call = devolve(v1Call.get());
+
+    Option<Error> error = common::validation::validateExecutorCall(call);
+    if (error.isSome()) {
+      return Error("Failed to validate master::Call: " + error->message);
+    }
+
+    return call;
+  };
+
+  // Note that `acceptsMediaType()` returns true if the given headers
+  // field does not exist, i.e. by default we return JSON here.
+  ContentType acceptType;
+  if (request.acceptsMediaType(APPLICATION_JSON)) {
+    acceptType = ContentType::JSON;
+  } else if (request.acceptsMediaType(APPLICATION_PROTOBUF)) {
+    acceptType = ContentType::PROTOBUF;
+  } else if (request.acceptsMediaType(APPLICATION_RECORDIO)) {
+    acceptType = ContentType::RECORDIO;
+  } else {
+    return NotAcceptable(
+        string("Expecting 'Accept' to allow ") +
+        APPLICATION_JSON + " or " + APPLICATION_PROTOBUF + " or " +
+        APPLICATION_RECORDIO);
+  }
+
+  Option<ContentType> messageAcceptType;
+  if (streamingMediaType(acceptType)) {
+    // Note that `acceptsMediaType()` returns true if the given headers
+    // field does not exist, i.e. by default we return JSON here.
+    if (request.acceptsMediaType(MESSAGE_ACCEPT, APPLICATION_JSON)) {
+      messageAcceptType = ContentType::JSON;
+    } else if (request.acceptsMediaType(MESSAGE_ACCEPT, APPLICATION_PROTOBUF)) {
+      messageAcceptType = ContentType::PROTOBUF;
+    } else {
+      return NotAcceptable(
+          string("Expecting '") + MESSAGE_ACCEPT + "' to allow " +
+          APPLICATION_JSON + " or " + APPLICATION_PROTOBUF);
+    }
+  } else {
+    // Validate that a client has not set the "Message-Accept"
+    // header for a non-streaming response.
+    if (request.headers.contains(MESSAGE_ACCEPT)) {
+      return NotAcceptable(
+          string("Expecting '") + MESSAGE_ACCEPT +
+          "' to be not set for non-streaming responses");
+    }
+  }
+
+  CHECK_EQ(Request::PIPE, request.type);
+  CHECK_SOME(request.reader);
+
+  RequestMediaTypes mediaTypes {
+      contentType, acceptType, messageContentType, messageAcceptType};
+
+  if (streamingMediaType(contentType)) {
+    CHECK_SOME(mediaTypes.messageContent);
+
+    shared_ptr<Reader<mesos::executor::Call>> reader(
+        new Reader<mesos::executor::Call>(
+            Decoder<mesos::executor::Call>(lambda::bind(
+                deserializer, lambda::_1, mediaTypes.messageContent.get())),
+            request.reader.get()));
+
+    return reader->read()
+      .then(defer(
+          slave->self(),
+          [=](const Result<mesos::executor::Call>& call) -> Future<Response> {
+            if (call.isNone()) {
+              return BadRequest("Received EOF while reading request body");
+            }
+
+            if (call.isError()) {
+              return BadRequest(call.error());
+            }
+
+            return _executor(call.get(), reader, mediaTypes, principal);
+          }));
+  } else {
+    Pipe::Reader reader = request.reader.get();  // Remove const.
+
+    return reader.readAll()
+      .then(defer(
+          slave->self(),
+          [=](const string& body) -> Future<Response> {
+            Try<mesos::executor::Call> call = deserializer(body, contentType);
+            if (call.isError()) {
+              return BadRequest(call.error());
+            }
+            return _executor(call.get(), None(), mediaTypes, principal);
+          }));
+  }
+}
+
+
+Future<Response> Http::_executor(
+    const mesos::executor::Call& call,
+    Option<shared_ptr<Reader<mesos::executor::Call>>> reader,
+    const RequestMediaTypes& mediaTypes,
+    const Option<Principal>& principal) const
+{
+  // Validate that a client has not _accidentally_ sent us a
+  // streaming request for a call type that does not support it.
+  if (streamingMediaType(mediaTypes.content) &&
+      call.type() != executor::Call::SUBSCRIBE) {
+    return UnsupportedMediaType(
+        "Streaming 'Content-Type' " + stringify(mediaTypes.content) + " is "
+        "not supported for " + stringify(call.type()) + " call");
+  }
+
+  if (streamingMediaType(mediaTypes.accept) &&
+      call.type() != executor::Call::SUBSCRIBE) {
+    return NotAcceptable("Streaming response is not supported for " +
+        stringify(call.type()) + " call");
+  }
+
+  // When the agent is recovering, only SUBSCRIBE calls are allowed.
+  if (call.type() != executor::Call::SUBSCRIBE &&
+      slave->state == Slave::RECOVERING) {
+    return ServiceUnavailable("Agent has not finished recovery");
   }
 
   // We consolidate the framework/executor lookup logic here because
@@ -810,7 +935,7 @@ Future<Response> Http::executor(
   // TODO(greggomann): Move this implicit executor authorization
   // into the authorizer. See MESOS-7399.
   if (principal.isSome()) {
-    error = verifyExecutorClaims(
+    Option<Error> error = verifyExecutorClaims(
         principal.get(),
         call.framework_id(),
         call.executor_id(),
@@ -830,7 +955,7 @@ Future<Response> Http::executor(
     case executor::Call::SUBSCRIBE: {
       Pipe pipe;
       OK ok;
-      ok.headers["Content-Type"] = stringify(acceptType);
+      ok.headers["Content-Type"] = stringify(mediaTypes.accept);
 
       ok.type = Response::PIPE;
       ok.reader = pipe.reader();

@@ -92,13 +92,20 @@ public:
 private:
   JSON::Object _flags() const;
 
-  // Continuation for `/api` endpoint that handles streaming and non-streaming
-  // requests. In case of a streaming request, `call` would be the first
-  // record and additional records can be read using the `reader`. For
-  // non-streaming requests, `reader` would be set to `None()`.
+  // Continuations for `/api` and `/api/v1/executor` endpoints, which both
+  // handles streaming and non-streaming requests. In case of a streaming
+  // request, `call` would be the first record and additional records can
+  // be read using the `reader`. For non-streaming requests, `reader` would
+  // be set to `None()`.
   process::Future<process::http::Response> _api(
       const agent::Call& call,
       Option<process::Owned<recordio::Reader<agent::Call>>>&& reader,
+      const RequestMediaTypes& mediaTypes,
+      const Option<process::http::authentication::Principal>& principal) const;
+
+  process::Future<process::http::Response> _executor(
+      const executor::Call& call,
+      Option<std::shared_ptr<recordio::Reader<executor::Call>>> reader,
       const RequestMediaTypes& mediaTypes,
       const Option<process::http::authentication::Principal>& principal) const;
 

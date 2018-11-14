@@ -779,6 +779,7 @@ void Slave::initialize()
         },
         options);
 
+  // Setup the '/api/v1/executor' handler for streaming requests.
   route("/api/v1/executor",
         EXECUTOR_HTTP_AUTHENTICATION_REALM,
         Http::EXECUTOR_HELP(),
@@ -786,7 +787,9 @@ void Slave::initialize()
                const Option<Principal>& principal) {
           logRequest(request);
           return http.executor(request, principal);
-        });
+        },
+        options);
+
   route(
       "/api/v1/resource_provider",
       RESOURCE_PROVIDER_HTTP_AUTHENTICATION_REALM,
