@@ -4633,6 +4633,70 @@ void Slave::operationStatusAcknowledgement(
 }
 
 
+HttpConnection::HttpConnection(
+    Option<shared_ptr<recordio::Reader<executor::Call>>> _reader,
+    const http::Pipe::Writer& _writer,
+    ContentType _contentType)
+  : reader(_reader),
+    writer(_writer),
+    contentType(_contentType),
+    encoder(lambda::bind(serialize, contentType, lambda::_1))
+{
+  // NOTE: This loop is not run on the agent actor!
+  //
+  // When the incoming request is a streaming request, the `reader` will
+  // be set and we expect to get heartbeats over this handle.
+  if (reader.isSome()) {
+    process::loop(
+        None(),
+        [this]() {
+          // TODO(josephw): The heartbeat interval is currently
+          // hardcoded to expect a heartbeat at least once every 30 seconds.
+          // This should be configurable by the requester.
+          return reader.get()->read()
+            .after(
+                Seconds(30),
+                [this](Future<Result<executor::Call>> future) {
+                  future.discard();
+
+                  return Failure("Executor heartbeating timed out");
+                });
+        },
+        [this](const Result<executor::Call>& heartbeat)
+          -> ControlFlow<Nothing> {
+            // If there is an error while decoding or the incoming stream
+            // has closed, we treat this as if the heartbeats have stopped.
+            if (heartbeat.isError() || heartbeat.isNone()) {
+              return Break();
+            }
+
+            // Besides reading and parsing the incoming message, we do
+            // not examine the contents, because a blank object is
+            // sufficient as a heartbeat.
+            return Continue();
+        })
+      .onAny([this](const Future<Nothing>& future) {
+        // TODO(josephw): What should we do when the heartbeats stop?
+        // There is no equivalent of a `ReconnectExecutorMessage` for
+        // HTTP executors, and we currently rely on the client detecting
+        // disconnections and resubscribing.
+        //
+        // Currently, the agent does nothing when the executor disconnects
+        // after subscribing. We don't even have a handler on the agent to
+        // remove the executor, change the state, or add a timeout.
+        //
+        // We should fix the existing lack of a handler alongside this change.
+        // Firstly, we could move the executor back into the REGISTERING
+        // state and start the timeout for reregistration. If the executor
+        // does not reconnect, we can kill the executor.
+        //
+        // When we detect a lack of heartbeats, we can close the connection
+        // and treat this as a generic executor disconnection event.
+      });
+  }
+}
+
+
 void Slave::subscribe(
     StreamingHttpConnection<v1::executor::Event> http,
     const Call::Subscribe& subscribe,
