@@ -960,6 +960,157 @@ TEST_P(ExecutorHttpApiTest, Subscribe)
 }
 
 
+// This test checks what happens if an executor subscribes and then disconnects.
+TEST_P(ExecutorHttpApiTest, SubscribeThenDisconnect)
+{
+  Clock::pause();
+
+  const ContentType contentType = GetParam();
+  const string contentTypeString = stringify(contentType);
+
+  Resources resources = Resources::parse("cpus:0.1;mem:32;disk:32").get();
+
+  master::Flags masterFlags = CreateMasterFlags();
+  Try<Owned<cluster::Master>> master = StartMaster(masterFlags);
+  ASSERT_SOME(master);
+
+  ExecutorID executorId = DEFAULT_EXECUTOR_ID;
+  MockExecutor exec(executorId);
+  TestContainerizer containerizer(&exec);
+
+  Owned<MasterDetector> detector = master.get()->createDetector();
+  slave::Flags slaveFlags = CreateSlaveFlags();
+  slaveFlags.registration_backoff_factor = Seconds(0);
+
+  Try<Owned<cluster::Slave>> slave = StartSlave(
+      detector.get(),
+      &containerizer,
+      slaveFlags);
+  ASSERT_SOME(slave);
+
+  MockScheduler sched;
+  MesosSchedulerDriver driver(
+      &sched, DEFAULT_FRAMEWORK_INFO, master.get()->pid, DEFAULT_CREDENTIAL);
+
+  Future<FrameworkID> frameworkId;
+  EXPECT_CALL(sched, registered(&driver, _, _))
+    .WillOnce(FutureArg<1>(&frameworkId));
+
+  Future<vector<Offer>> offers1;
+  Future<vector<Offer>> offers2;
+  EXPECT_CALL(sched, resourceOffers(&driver, _))
+    .WillOnce(FutureArg<1>(&offers1))
+    .WillOnce(FutureArg<1>(&offers2));
+  driver.start();
+
+  AWAIT_READY(frameworkId);
+
+  AWAIT_READY(offers1);
+  ASSERT_EQ(1u, offers1->size());
+
+  // Drop the `RegisterExecutorMessage` so the test body can
+  // pretend to be the executor.
+  Future<Message> registerExecutorMessage =
+    DROP_MESSAGE(Eq(RegisterExecutorMessage().GetTypeName()), _, _);
+
+  TaskInfo taskInfo1 = createTask(
+      offers1.get()[0].slave_id(), resources, "", executorId);
+  driver.launchTasks(offers1.get()[0].id(), {taskInfo1});
+
+  AWAIT_READY(registerExecutorMessage);
+
+  // Pretend to the be executor.
+  {
+    Call call;
+    call.mutable_framework_id()->CopyFrom(evolve(frameworkId.get()));
+    call.mutable_executor_id()->CopyFrom(evolve(executorId));
+
+    call.set_type(Call::SUBSCRIBE);
+    call.mutable_subscribe();
+
+    process::http::Headers headers;
+    headers["Accept"] = contentTypeString;
+
+    Future<Response> response = process::http::streaming::post(
+        slave.get()->pid,
+        "api/v1/executor",
+        headers,
+        serialize(contentType, call),
+        contentTypeString);
+
+    AWAIT_EXPECT_RESPONSE_STATUS_EQ(OK().status, response);
+    AWAIT_EXPECT_RESPONSE_HEADER_EQ("chunked", "Transfer-Encoding", response);
+    AWAIT_EXPECT_RESPONSE_HEADER_EQ(
+        contentTypeString, "Content-Type", response);
+
+    ASSERT_EQ(Response::PIPE, response->type);
+    Option<Pipe::Reader> reader = response->reader;
+    ASSERT_SOME(reader);
+
+    auto deserializer =
+      lambda::bind(deserialize<Event>, contentType, lambda::_1);
+    Reader<Event> responseDecoder(Decoder<Event>(deserializer), reader.get());
+
+    Future<Result<Event>> event = responseDecoder.read();
+    AWAIT_READY(event);
+    ASSERT_SOME(event.get());
+
+    // Check event type is subscribed and if the ExecutorID matches.
+    ASSERT_EQ(Event::SUBSCRIBED, event->get().type());
+    ASSERT_EQ(event->get().subscribed().executor_info().executor_id(),
+              call.executor_id());
+    ASSERT_TRUE(event->get().subscribed().has_container_id());
+
+    // Wait for the agent to send the first task, so we don't race against
+    // this later on. This (pretend) executor drops the task though.
+    event = responseDecoder.read();
+    AWAIT_READY(event);
+    ASSERT_SOME(event.get());
+    ASSERT_EQ(Event::LAUNCH, event->get().type());
+
+    // Now close the connection from the executor's side.
+    reader->close();
+
+    // Determine the PID of the connection we just established,
+    // so that we can kill it out of band. Libprocess will keep outgoing
+    // streaming connections alive until they are disconnected, but here
+    // we want to kill the reading/streaming end before it gets disconnected.
+    string nextConnectionId = process::ID::generate("__http_connection__");
+    vector<string> tokens = strings::tokenize(nextConnectionId, "()");
+    ASSERT_EQ(2, tokens.size());
+    Try<int> number = numify<int>(tokens[1]);
+    ASSERT_SOME(number);
+
+    process::terminate(
+      process::UPID(
+          "__http_connection__(" + stringify(number.get() - 1) + ")",
+          master.get()->pid.address));
+  }
+
+  // TODO(josephw): Without any changes, the executor would be considered
+  // "RUNNING", even though it cannot receive messages from the agent.
+  // Here, we send another task to the executor. Ideally, the agent would
+  // wait until the executor reconnects before sending the task over.
+  // What actually happens, is the agent drops the task on the floor.
+  Clock::advance(
+      masterFlags.allocation_interval + Duration(Filters().refuse_seconds()));
+  AWAIT_READY(offers2);
+  ASSERT_EQ(1u, offers2->size());
+
+  TaskInfo taskInfo = createTask(
+      offers2.get()[0].slave_id(), resources, "", executorId);
+  driver.launchTasks(offers2.get()[0].id(), {taskInfo});
+
+  EXPECT_CALL(exec, shutdown(_))
+    .Times(AtMost(1));
+
+  driver.stop();
+  driver.join();
+
+  Clock::resume();
+}
+
+
 // This test verifies that heartbeats are sent from the agent to the executor.
 TEST_P(ExecutorHttpApiTest, HeartbeatEvents)
 {
