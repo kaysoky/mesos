@@ -35,10 +35,11 @@ if (NOT WIN32)
 
   add_executable(
     mesos-cni-port-mapper
+    isolators/network/cni/spec.cpp
     isolators/network/cni/plugins/port_mapper/main.cpp
     isolators/network/cni/plugins/port_mapper/port_mapper.cpp)
 
-  target_link_libraries(mesos-cni-port-mapper PRIVATE mesos)
+  target_link_libraries(mesos-cni-port-mapper PRIVATE mesos-common)
 endif ()
 
 if (ENABLE_PORT_MAPPING_ISOLATOR)
