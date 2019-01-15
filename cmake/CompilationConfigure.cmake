@@ -187,6 +187,10 @@ option(
   "Build Java components. Warning: this is SLOW."
   FALSE)
 
+# Set this variable to prevent the `FindJNI` from finding a Framework.
+# Mesos tests expect the JVM to be a shared library (unix-style package).
+set(CMAKE_FIND_FRAMEWORK NEVER)
+
 if (ENABLE_JAVA)
   include(FindJava)
   find_package(Java COMPONENTS Development)
@@ -579,6 +583,7 @@ endif ()
 get_directory_property(BUILD_FLAGS_RAW COMPILE_DEFINITIONS)
 string(REPLACE "\"" "\\\"" BUILD_FLAGS "${BUILD_FLAGS_RAW}")
 
+# NOTE: This variable is set by `FindJNI` called when enabling Java.
 set(BUILD_JAVA_JVM_LIBRARY ${JAVA_JVM_LIBRARY})
 
 # When building from source, from a git clone, emit some extra build info.

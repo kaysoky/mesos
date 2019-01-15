@@ -277,6 +277,7 @@ target_link_libraries(
   mesos-libexecutor
   mesos-libmaster
   mesos-scheduler
+  $<$<BOOL:${HAS_JAVA}>:mesos-java>
   googletest)
 
 if (NOT WIN32)

@@ -117,8 +117,10 @@ add_library(mesos-java ${JAVA_SRC} ${JAVA_H})
 
 target_link_libraries(
   mesos-java
-  mesos-protobufs
-  process
+  mesos-libexecutor
+  mesos-replicated-log
+  mesos-scheduler
+  mesos-state-storage
   zookeeper
   ${JNI_LIBRARIES})
 

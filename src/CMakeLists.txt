@@ -433,11 +433,6 @@ endif ()
 #   ${MESOS_BIN_SRC_DIR}
 #   ${MESOS_SRC_DIR})
 
-# TODO(josephw): Figure out where the Java target should go.
-# target_link_libraries(
-#   mesos PUBLIC
-#   $<$<BOOL:${HAS_JAVA}>:mesos-java>)
-
 # TODO(josephw): Figure out which target(s) would benefit from precompiled
 # headers now that libmesos has been split up into smaller targets.
 # if (ENABLE_PRECOMPILED_HEADERS)
