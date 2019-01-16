@@ -245,6 +245,27 @@ target_link_libraries(
   mesos-common)
 
 
+# MESOS LINUX LIBRARY.
+######################
+if (LINUX)
+  set(LINUX_SRC
+    linux/capabilities.cpp
+    linux/cgroups.cpp
+    linux/fs.cpp
+    linux/ldcache.cpp
+    linux/ldd.cpp
+    linux/ns.cpp
+    linux/perf.cpp
+    linux/systemd.cpp)
+
+  add_library(mesos-linux ${LINUX_SRC})
+
+  target_link_libraries(
+    mesos-linux PUBLIC
+    mesos-common)
+endif ()
+
+
 # SOURCE FILES FOR THE MESOS LIBRARY.
 #####################################
 set(AGENT_SRC
@@ -345,14 +366,7 @@ set(HEALTH_CHECK_SRC
   checks/health_checker.cpp)
 
 set(LINUX_SRC
-  linux/capabilities.cpp
-  linux/cgroups.cpp
-  linux/fs.cpp
-  linux/ldcache.cpp
-  linux/ldd.cpp
-  linux/ns.cpp
-  linux/perf.cpp
-  linux/systemd.cpp
+  containerizer/mesos/cni_setup.cpp
   slave/containerizer/mesos/linux_launcher.cpp
   slave/containerizer/mesos/isolators/appc/runtime.cpp
   slave/containerizer/mesos/isolators/cgroups/cgroups.cpp
@@ -621,6 +635,7 @@ target_link_libraries(
   mesos-hdfs
   mesos-protobufs
   mesos-scheduler
+  $<$<PLATFORM_ID:Linux>:mesos-linux>
 
   $<$<PLATFORM_ID:Linux>:nvml>
   $<$<BOOL:${HAS_JAVA}>:mesos-java>)

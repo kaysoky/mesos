@@ -18,12 +18,10 @@
 #define __NETWORK_CNI_ISOLATOR_HPP__
 
 #include <process/id.hpp>
-#include <process/subprocess.hpp>
-
-#include <stout/subcommand.hpp>
 
 #include "slave/flags.hpp"
 
+#include "slave/containerizer/mesos/cni_setup.hpp"
 #include "slave/containerizer/mesos/isolator.hpp"
 
 #include "slave/containerizer/mesos/isolators/network/cni/spec.hpp"
@@ -34,10 +32,6 @@
 namespace mesos {
 namespace internal {
 namespace slave {
-
-// Forward declarations.
-class NetworkCniIsolatorSetup;
-
 
 // This isolator implements support for Container Network Interface (CNI)
 // specification <https://github.com/appc/cni/blob/master/SPEC.md> . It
@@ -225,40 +219,6 @@ private:
   // Runner manages a separate thread to call `usage` functions
   // in the containers' namespaces.
   ns::NamespaceRunner namespaceRunner;
-};
-
-
-// A subcommand to setup container hostname and mount the hosts,
-// resolv.conf and hostname from the host file system into the
-// container's file system.  The hostname needs to be setup in the
-// container's UTS namespace, and the files need to be bind mounted in
-// the container's mnt namespace.
-class NetworkCniIsolatorSetup : public Subcommand
-{
-public:
-  static const char* NAME;
-
-  struct Flags : public virtual flags::FlagsBase
-  {
-    Flags();
-
-    Option<pid_t> pid;
-    Option<std::string> hostname;
-    Option<std::string> rootfs;
-    Option<std::string> etc_hosts_path;
-    Option<std::string> etc_hostname_path;
-    Option<std::string> etc_resolv_conf;
-    bool bind_host_files;
-    bool bind_readonly;
-  };
-
-  NetworkCniIsolatorSetup() : Subcommand(NAME) {}
-
-  Flags flags;
-
-protected:
-  int execute() override;
-  flags::FlagsBase* getFlags() override { return &flags; }
 };
 
 } // namespace slave {

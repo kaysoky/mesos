@@ -14,10 +14,20 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# THE CONTAINERIZER EXECUTABLE.
-###############################
-add_executable(mesos-containerizer main.cpp)
-target_link_libraries(mesos-containerizer PRIVATE mesos)
+# THE CONTAINERIZER EXECUTABLES.
+################################
+add_executable(
+  mesos-containerizer
+  main.cpp
+  launch.cpp
+  mount.cpp
+  $<$<PLATFORM_ID:Linux>:cni_setup.cpp>)
+
+target_link_libraries(
+  mesos-containerizer PRIVATE
+  mesos-common
+  mesos-rlimit
+  $<$<PLATFORM_ID:Linux>:mesos-linux>)
 
 if (NOT WIN32)
   add_executable(mesos-io-switchboard io/switchboard_main.cpp)
