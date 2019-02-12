@@ -8190,6 +8190,11 @@ void Master::updateSlave(UpdateSlaveMessage&& message)
              resourceProvider.resource_version_uuid(),
              {}});
 
+        // NOTE: We must add the resource provider's resources to the total
+        // before adding any operations, because orphan operations will
+        // subsequently subtract from this total.
+        slave->totalResources += resourceProvider.total_resources();
+
         hashmap<FrameworkID, Resources> usedByOperations;
 
         foreach (
@@ -8206,8 +8211,8 @@ void Master::updateSlave(UpdateSlaveMessage&& message)
           if (!protobuf::isTerminalState(operation.latest_status().state()) &&
               operation.has_framework_id()) {
             // If we do not yet know the `FrameworkInfo` of the framework the
-            // operation originated from, we cannot properly track the operation
-            // at this point.
+            // operation originated from, the operation is an orphan, and
+            // will not be accounted for by the allocator.
             //
             // TODO(bbannier): Consider introducing ways of making sure an agent
             // always knows the `FrameworkInfo` of operations triggered on its
@@ -8215,12 +8220,6 @@ void Master::updateSlave(UpdateSlaveMessage&& message)
             // operations like is already done for `RunTaskMessage`, see
             // MESOS-8582.
             if (framework == nullptr) {
-              LOG(WARNING)
-                << "Cannot properly account for operation " << operation.uuid()
-                << " learnt in reconciliation of agent " << slaveId
-                << " since framework " << operation.framework_id()
-                << " is unknown; this can lead to assertion failures after the"
-                   " operation terminates, see MESOS-8536";
               continue;
             }
 
@@ -8235,8 +8234,6 @@ void Master::updateSlave(UpdateSlaveMessage&& message)
               consumedResources.get();
           }
         }
-
-        slave->totalResources += resourceProvider.total_resources();
 
         allocator->addResourceProvider(
             slaveId, resourceProvider.total_resources(), usedByOperations);
@@ -11464,6 +11461,22 @@ void Master::addOperation(
 
   if (framework != nullptr) {
     framework->addOperation(operation);
+  } else {
+    // When the framework is not known by the master, this means either:
+    //   * The framework has been completed.
+    //   * The framework has no known tasks and has yet to reregister.
+    // The master cannot always differentiate these cases, because completed
+    // frameworks are only kept in memory, in a circular buffer.
+    //
+    // TODO(josephw): Once MESOS-8582 is resolved, operations may include
+    // enough information to add a framework entry, which means only
+    // completed frameworks would result in orphans.
+    //
+    // These operations will be preemptively considered "orphans" and
+    // will be given a grace period before the master adopts them.
+    // After which, the master will acknowledge any associated operation
+    // status updates.
+    slave->markOperationAsOrphan(operation);
   }
 }
 
