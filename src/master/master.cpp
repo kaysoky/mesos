@@ -10602,7 +10602,27 @@ void Master::removeFramework(Framework* framework)
     }
   }
 
+  hashset<Slave*> slavesWithOrphanOperations;
   foreachvalue (Operation* operation, utils::copy(framework->operations)) {
+    // Non-terminal, non-speculative operations are considered "orphaned"
+    // once the originating framework is removed.  The resources used by
+    // the operation will remain allocated until a terminal operation
+    // status update is received.
+    if (!protobuf::isSpeculativeOperation(operation->info()) &&
+        !protobuf::isTerminalState(operation->latest_status().state())) {
+      CHECK(operation->has_slave_id())
+        << "External resource provider is not supported yet";
+
+      Slave* slave = slaves.registered.get(operation->slave_id());
+      CHECK_NOTNULL(slave);
+
+      slave->markOperationAsOrphan(operation);
+
+      // We defer the required updates to the allocator until after the
+      // framework has been removed from the allocator.
+      slavesWithOrphanOperations.insert(slave);
+    }
+
     framework->removeOperation(operation);
   }
 
@@ -10644,6 +10664,17 @@ void Master::removeFramework(Framework* framework)
   // Remove the framework.
   frameworks.registered.erase(framework->id());
   allocator->removeFramework(framework->id());
+
+  // For any pending operations, we temporarily remove the operations'
+  // resources from the allocator, because these resources are technically
+  // still in use by the (now removed) framework.
+  foreach (Slave* slave, slavesWithOrphanOperations) {
+    allocator->updateSlave(slave->id, slave->info, slave->totalResources);
+
+    // NOTE: Even though we are modifying the slave's total resources, we
+    // do not need to rescind any offers because the resources removed cannot
+    // be offered between the `removeFramework()` and `updateSlave()` calls.
+  }
 
   // The framework pointer is now owned by `frameworks.completed`.
   frameworks.completed.set(framework->id(), Owned<Framework>(framework));
@@ -12726,6 +12757,34 @@ void Slave::removeOperation(Operation* operation)
 
     resourceProvider.operations.erase(operation->uuid());
   }
+}
+
+
+void Slave::markOperationAsOrphan(Operation* operation)
+{
+  // Only non-speculative, non-terminal operations can be orphaned.
+  if (protobuf::isSpeculativeOperation(operation->info()) ||
+      protobuf::isTerminalState(operation->latest_status().state())) {
+    return;
+  }
+
+  orphanedOperations.insert(operation->uuid());
+
+  // Orphaned operations have no framework, and hence cannot be accounted
+  // for within the allocator. Instead, the operation's resources are removed
+  // from the agent's total resources until the operation terminates.
+  recoverResources(operation);
+
+  Try<Resources> consumed = protobuf::getConsumedResources(operation->info());
+  CHECK_SOME(consumed);
+
+  Resources consumedUnallocated = consumed.get();
+  consumedUnallocated.unallocate();
+
+  CHECK(totalResources.contains(consumedUnallocated))
+    << "Unknown resources from orphan operation: " << consumedUnallocated;
+
+  totalResources -= consumedUnallocated;
 }
 
 
