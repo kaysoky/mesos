@@ -10240,19 +10240,48 @@ void Master::recoverFramework(
       }
     }
 
-    foreachvalue (Operation* operation, slave->operations) {
-      if (operation->has_framework_id() &&
-          operation->framework_id() == framework->id()) {
-        framework->addOperation(operation);
-      }
-    }
-
+    // Combine all the operations of the agent into one list
+    // so they can be processed the same way.
+    vector<Operation*> allOperations = slave->operations.values();
     foreachvalue (const Slave::ResourceProvider& resourceProvider,
                   slave->resourceProviders) {
       foreachvalue (Operation* operation, resourceProvider.operations) {
-        if (operation->has_framework_id() &&
-            operation->framework_id() == framework->id()) {
-          framework->addOperation(operation);
+        allOperations.push_back(operation);
+      }
+    }
+
+    foreach (Operation* operation, allOperations) {
+      if (operation->has_framework_id() &&
+          operation->framework_id() == framework->id()) {
+        framework->addOperation(operation);
+
+        // If this is an orphaned operation, the orphan's resources
+        // must be added back to the agent's total, and the allocator
+        // will need to be updated with the new total and allocation.
+        if (slave->orphanedOperations.contains(operation->uuid())) {
+          slave->orphanedOperations.erase(operation->uuid());
+
+          // Orphan operations are not removed immediately upon reaching
+          // terminal status. However, there is no more resource accounting
+          // necessary for terminal orphans.
+          if (protobuf::isTerminalState(operation->latest_status().state())) {
+            continue;
+          }
+
+          Try<Resources> consumed =
+            protobuf::getConsumedResources(operation->info());
+
+          CHECK_SOME(consumed);
+
+          Resources consumedUnallocated = consumed.get();
+          consumedUnallocated.unallocate();
+
+          slave->totalResources += consumedUnallocated;
+
+          allocator->updateSlave(slave->id, slave->info, slave->totalResources);
+
+          // NOTE: The allocation of these orphan operation resources will be
+          // updated in `addFramework` below.
         }
       }
     }
