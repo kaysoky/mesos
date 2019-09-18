@@ -50,9 +50,15 @@ option(DISABLE_PARALLEL_TEST_EXECUTION "Do not execute tests in parallel" OFF)
 if (DISABLE_PARALLEL_TEST_EXECUTION)
   unset(TEST_DRIVER CACHE)
 else ()
+  if (WIN32)
+    # NOTE: .py files are not automatically run with Python on Windows.
+    set(TEST_RUNNER "python")
+  endif ()
+
   set(TEST_DRIVER
-    "${PROJECT_SOURCE_DIR}/support/mesos-gtest-runner.py" CACHE STRING
+    ${TEST_RUNNER} "${PROJECT_SOURCE_DIR}/support/mesos-gtest-runner.py" CACHE STRING
     "GTest driver to use")
+
   mark_as_advanced(TEST_DRIVER)
 endif ()
 

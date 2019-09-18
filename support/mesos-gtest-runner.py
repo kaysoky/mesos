@@ -27,13 +27,18 @@ program invocations ("shards"). This script provides a convenient
 wrapper around that functionality and stream-lined output.
 """
 
+import platform
+
 import argparse
 import multiprocessing
 import os
-import resource
 import shlex
 import subprocess
 import sys
+
+if platform.system() != 'Windows':
+    # NOTE: This package does not exist on Windows.
+    import resource
 
 
 class Bcolors:
@@ -211,16 +216,18 @@ def validate_setup(options):
         # accommodate additional processes forked in parallel.
         requirement = options.jobs * multiprocessing.cpu_count() * 16
 
-        nproc_limit = resource.getrlimit(resource.RLIMIT_NPROC)[0]
+        if platform.system() != 'Windows':
+            nproc_limit = resource.getrlimit(resource.RLIMIT_NPROC)[0]
 
-        if nproc_limit != resource.RLIM_INFINITY and nproc_limit < requirement:
-            print(Bcolors.colorize(
-                "Detected low process count ulimit ({} vs {}). Increase "
-                "'ulimit -u' to avoid spurious test failures."
-                .format(nproc_limit, requirement),
-                Bcolors.WARNING),
-                  file=sys.stderr)
-            sys.exit(1)
+            if nproc_limit != resource.RLIM_INFINITY \
+                    and nproc_limit < requirement:
+                print(Bcolors.colorize(
+                    "Detected low process count ulimit ({} vs {}). Increase "
+                    "'ulimit -u' to avoid spurious test failures."
+                    .format(nproc_limit, requirement),
+                    Bcolors.WARNING),
+                      file=sys.stderr)
+                sys.exit(1)
     except Exception as err:
         print(Bcolors.colorize(
             "Could not check compatibility of ulimit settings: {}".format(err),
